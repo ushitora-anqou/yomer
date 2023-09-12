@@ -4,23 +4,26 @@
 
 (generate_opam_files true)
 
+(implicit_transitive_deps false)
+
 (source
- (github username/reponame))
+ (github ushitora-anqou/yomer))
 
-(authors "Author Name")
+(authors "Ushitora Anqou")
 
-(maintainers "Maintainer Name")
+(maintainers "Ushitora Anqou")
 
 (license LICENSE)
 
-(documentation https://url/to/documentation)
+(documentation https://github.com/ushitora-anqou/yomer)
 
 (package
  (name yomer)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml dune)
- (tags
-  (topics "to describe" your project)))
+ (synopsis "A Discord bot")
+ (description "A Discord bot")
+ (depends
+  (ocaml
+   (>= 5.0.0)))
+ (tags (discord)))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project
