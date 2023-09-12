@@ -1,0 +1,4 @@
+(executable
+ (public_name yomer)
+ (name main)
+ (libraries yomer))
