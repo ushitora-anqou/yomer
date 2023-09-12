@@ -22,6 +22,11 @@
  (synopsis "A Discord bot")
  (description "A Discord bot")
  (depends
+  (cohttp
+   (>= 6.0.0~alpha2))
+  (cohttp-eio
+   (>= 6.0.0~alpha2))
+  eio_main
   (ocaml
    (>= 5.0.0)))
  (tags (discord)))
