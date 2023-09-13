@@ -11,6 +11,8 @@ doc: "https://github.com/ushitora-anqou/yomer"
 bug-reports: "https://github.com/ushitora-anqou/yomer/issues"
 depends: [
   "dune" {>= "3.10"}
+  "websocket"
+  "websocket-eio"
   "cohttp" {>= "6.0.0~alpha2"}
   "cohttp-eio" {>= "6.0.0~alpha2"}
   "eio_main"

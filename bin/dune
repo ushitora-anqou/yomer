@@ -1,4 +1,4 @@
 (executable
  (public_name yomer)
  (name main)
- (libraries yomer cohttp-eio eio_main eio.unix))
+ (libraries yomer cohttp-eio eio_main eio.unix websocket websocket-eio))

@@ -22,6 +22,8 @@
  (synopsis "A Discord bot")
  (description "A Discord bot")
  (depends
+  websocket ; eio supported version
+  websocket-eio ; eio supported version
   (cohttp
    (>= 6.0.0~alpha2))
   (cohttp-eio
