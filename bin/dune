@@ -1,4 +1,35 @@
 (executable
  (public_name yomer)
  (name main)
- (libraries yomer cohttp-eio eio_main eio.unix websocket websocket-eio))
+ (preprocess
+  (pps ppx_deriving.make ppx_deriving.show ppx_deriving.enum ppx_yojson_conv))
+ (libraries
+  yomer
+  astring
+  base64
+  cohttp
+  cohttp-eio
+  cstruct
+  ctypes
+  ctypes-foreign
+  domain-name
+  eio
+  eio.core
+  eio.unix
+  eio_linux
+  eio_main
+  ipaddr
+  logs
+  logs.fmt
+  mirage-crypto-rng
+  mirage-crypto-rng-eio
+  ocplib-endian
+  sodium
+  tls
+  tls-eio
+  unix
+  uri
+  websocket
+  x509
+  yojson)
+ (flags :standard -cclib -lopus))

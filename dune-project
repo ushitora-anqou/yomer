@@ -28,7 +28,8 @@
    (>= 6.0.0~alpha2))
   (cohttp-eio
    (>= 6.0.0~alpha2))
-  eio_main
+  (eio_main
+   (<= 0.11))
   (ocaml
    (>= 5.0.0)))
  (tags (discord)))
