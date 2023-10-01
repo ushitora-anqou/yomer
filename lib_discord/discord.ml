@@ -39,3 +39,5 @@ module Event = Event
 module Intent = Intent
 module Message = Message
 module StringMap = Util.StringMap
+
+let voice_frame_size = Voice_udp_stream.frame_size

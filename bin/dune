@@ -5,6 +5,7 @@
   (pps ppx_deriving.make))
  (libraries
   yomer
+  cstruct
   discord
   eio
   eio.unix
@@ -12,5 +13,6 @@
   eio_main
   logs
   mirage-crypto-rng
-  mirage-crypto-rng-eio)
+  mirage-crypto-rng-eio
+  pcre)
  (flags :standard -cclib -lopus))
