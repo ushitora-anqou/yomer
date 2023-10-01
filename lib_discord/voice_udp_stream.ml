@@ -140,6 +140,7 @@ let main _config env sw { vgw_conn; ip; port; ssrc; modes } mailbox () =
   let five_silent_frames = List.init 5 (fun _ -> "\xf8\xff\xfe") in
 
   let rec send_loop () =
+    let start_time = Eio.Time.now (Eio.Stdenv.clock env) in
     let empty = Mailbox.is_empty mailbox in
 
     if empty then (
@@ -156,6 +157,9 @@ let main _config env sw { vgw_conn; ip; port; ssrc; modes } mailbox () =
       | SecretKey _ -> failwith "duplicated secret_key"
       | Frame frame -> frame
       | Close -> raise Shutdown
+    in
+    let start_time =
+      if empty then Eio.Time.now (Eio.Stdenv.clock env) else start_time
     in
     let frames =
       List.init (num_burst_frames - 1) (fun _ ->
@@ -175,8 +179,11 @@ let main _config env sw { vgw_conn; ip; port; ssrc; modes } mailbox () =
     |> List.iter (fun frame ->
            send_frame encoder seq_num timestamp ssrc secret_key udp_send
              (`PCM_S16LE frame));
+
+    let end_time = Eio.Time.now (Eio.Stdenv.clock env) in
+    let diff = end_time -. start_time in
     Eio.Time.sleep (Eio.Stdenv.clock env)
-      (second_per_frame *. float_of_int (List.length frames));
+      ((second_per_frame *. float_of_int (List.length frames)) -. diff);
 
     send_loop ()
   in
