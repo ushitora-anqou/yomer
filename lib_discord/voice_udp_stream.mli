@@ -4,7 +4,7 @@ type init_arg = {
   ip : string;
   port : int;
   ssrc : int;
-  vgw : vgw_cast_msg Gen_server.caster;
+  vgw : vgw_cast_msg Gen_server.process;
 }
 
 type call_msg = [ `DiscoverIP ]

@@ -221,11 +221,11 @@ let connect ?(random_string = Websocket.Rng.init ())
 let read { read_frame; _ } = read_frame ()
 let write { write_frame; _ } frame = write_frame frame
 
-module Caster = struct
+module Process = struct
   type msg =
     [ `WSText of string | `WSClose of [ `Status_code of int | `Unknown ] ]
 
-  let start ~sw conn (caster : [> msg ] #Gen_server.caster) =
+  let start ~sw conn (caster : [> msg ] #Gen_server.process) =
     Eio.Fiber.fork ~sw @@ fun () ->
     let rec loop () =
       try

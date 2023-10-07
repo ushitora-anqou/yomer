@@ -11,9 +11,9 @@ val connect :
 val read : conn -> Websocket.Frame.t
 val write : conn -> Websocket.Frame.t -> unit
 
-module Caster : sig
+module Process : sig
   type msg =
     [ `WSText of string | `WSClose of [ `Status_code of int | `Unknown ] ]
 
-  val start : sw:Eio.Switch.t -> conn -> [> msg ] #Gen_server.caster -> unit
+  val start : sw:Eio.Switch.t -> conn -> [> msg ] #Gen_server.process -> unit
 end

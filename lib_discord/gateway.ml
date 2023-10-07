@@ -3,7 +3,7 @@ open Util
 type consumer_cast_msg = Event.t
 
 type init_arg = {
-  consumer : consumer_cast_msg Gen_server.caster;
+  consumer : consumer_cast_msg Gen_server.process;
   config : Config.t;
   state : State.t;
 }
@@ -21,10 +21,10 @@ type voice_state = {
 type cast_msg =
   [ `VoiceStateUpdate of voice_state
   | `Timeout of [ `Heartbeat ]
-  | Ws.Caster.msg ]
+  | Ws.Process.msg ]
 
 type state = {
-  consumer : consumer_cast_msg Gen_server.caster;
+  consumer : consumer_cast_msg Gen_server.process;
   ws_conn : Ws.conn;
   heartbeat_interval : float option;
   st : State.t;
@@ -53,7 +53,7 @@ class t =
     method connect_ws env ~sw =
       let endpoint = "https://gateway.discord.gg/?v=10&encoding=json" in
       let conn = Ws.connect ~sw env endpoint in
-      Ws.Caster.start ~sw conn self;
+      Ws.Process.start ~sw conn self;
       conn
 
     method resume_ws env ~sw state =
@@ -68,7 +68,7 @@ class t =
         Uri.to_string u
       in
       let conn = Ws.connect ~sw env url in
-      Ws.Caster.start ~sw conn self;
+      Ws.Process.start ~sw conn self;
 
       (* Send Resume event *)
       let seq = State.s state.st in
@@ -91,7 +91,7 @@ class t =
       | Hello { heartbeat_interval } ->
           let interval = float_of_int heartbeat_interval /. 1000.0 in
           if Option.is_none state.heartbeat_interval then
-            Timeout.Caster.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
+            Timeout.Process.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
               self;
 
           Identify
@@ -176,7 +176,7 @@ class t =
       | `Timeout `Heartbeat ->
           let clock = Eio.Stdenv.clock env in
           send_heartbeat state.st state.ws_conn;
-          Timeout.Caster.start clock ~sw
+          Timeout.Process.start clock ~sw
             (Option.get state.heartbeat_interval)
             `Heartbeat self;
           `NoReply state

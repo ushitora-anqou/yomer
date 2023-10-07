@@ -4,7 +4,7 @@ type consumer_cast_msg = Event.t
 
 type init_arg = {
   guild_id : string;
-  consumer : consumer_cast_msg Gen_server.caster;
+  consumer : consumer_cast_msg Gen_server.process;
 }
 
 type call_msg = |
@@ -17,13 +17,13 @@ type cast_msg =
   | `VoiceServer of voice_server
   | `Timeout of [ `Heartbeat ]
   | `Frame of string
-  | Ws.Caster.msg ]
+  | Ws.Process.msg ]
 
 type process_status = WaitingParameters | Running
 
 type state = {
   guild_id : string;
-  consumer : consumer_cast_msg Gen_server.caster;
+  consumer : consumer_cast_msg Gen_server.process;
   udp_stream : Voice_udp_stream.t;
   voice_state : voice_state option;
   voice_server : voice_server option;
@@ -72,7 +72,7 @@ class t =
       let conn =
         Ws.connect ~sw env ("https://" ^ endpoint ^ "/?v=4&encoding=json")
       in
-      Ws.Caster.start ~sw conn self;
+      Ws.Process.start ~sw conn self;
       conn
 
     method start_running env ~sw state =
@@ -107,7 +107,7 @@ class t =
                don't maintain without this hack. *)
           in
           if Option.is_none state.heartbeat_interval then
-            Timeout.Caster.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
+            Timeout.Process.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
               self;
           { state with heartbeat_interval = Some interval }
       | Resumed | Heartbeat _ | HeartbeatAck _ ->
@@ -144,7 +144,7 @@ class t =
       | `Timeout `Heartbeat ->
           let clock = Eio.Stdenv.clock env in
           send_heartbeat clock (Option.get state.ws_conn);
-          Timeout.Caster.start clock ~sw
+          Timeout.Process.start clock ~sw
             (Option.get state.heartbeat_interval)
             `Heartbeat self;
           `NoReply state

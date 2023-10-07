@@ -22,7 +22,7 @@ type init_arg = {
   ip : string;
   port : int;
   ssrc : int;
-  vgw : vgw_cast_msg Gen_server.caster;
+  vgw : vgw_cast_msg Gen_server.process;
 }
 
 type call_msg = [ `DiscoverIP ]
@@ -38,7 +38,7 @@ type state = {
   secret_key : Sodium.secret Sodium.Secret_box.key option;
   frames : string list (* reversed order *);
   speaking : bool; [@default false]
-  vgw : vgw_cast_msg Gen_server.caster;
+  vgw : vgw_cast_msg Gen_server.process;
   seq_num : int;
   timestamp : int;
   opus_encoder : Opus.Encoder.t;
@@ -133,7 +133,7 @@ let start_sending_frames clock ~sw state caster =
 
       let end_time = Eio.Time.now clock in
       let diff = end_time -. start_time in
-      Timeout.Caster.start clock ~sw
+      Timeout.Process.start clock ~sw
         ((second_per_frame *. float_of_int (List.length heads)) -. diff)
         "" caster;
 

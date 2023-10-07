@@ -45,6 +45,12 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
         (_ : 'state) =
       ()
 
+    (*
+    method supervise (env : Eio_unix.Stdenv.base) ~sw:(_ : Eio.Switch.t) : unit
+        =
+      ()
+*)
+
     method start env ~sw (args : 'init_arg) =
       let already_running =
         not (Atomic.compare_and_set running Stopped Running)
@@ -89,7 +95,7 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
     method cast (msg : 'cast_msg) : unit = Mailbox.send m (`Cast msg)
   end
 
-class type ['cast_msg] caster = object
+class type ['cast_msg] process = object
   method cast : 'cast_msg -> unit
 end
 
