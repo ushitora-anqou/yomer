@@ -12,3 +12,15 @@ type json_any = Yojson.Safe.t [@@deriving show]
 
 let json_any_of_yojson = Fun.id
 let yojson_of_json_any = Fun.id
+
+module List = struct
+  include List
+
+  let take_at_most n =
+    let rec aux n acc = function
+      | [] -> (List.rev acc, [])
+      | rest when n = 0 -> (List.rev acc, rest)
+      | x :: xs -> aux (n - 1) (x :: acc) xs
+    in
+    aux n []
+end

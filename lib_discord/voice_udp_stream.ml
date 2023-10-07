@@ -1,3 +1,13 @@
+open Util
+
+let frame_size = 960
+let second_per_frame = 0.02
+let sample_rate = 48000
+let channels = 2
+let application = Opus.Voip
+let num_burst_frames = 10
+let five_silent_frames = List.init 5 (fun _ -> "\xf8\xff\xfe")
+
 type connection_param = {
   vgw_conn : Ws.conn;
   ip : string;
@@ -6,45 +16,39 @@ type connection_param = {
   modes : string list;
 }
 
-type item =
-  | SecretKey of int list
-  | Frame of string
-  | Connect of connection_param
-  | Close
+type vgw_cast_msg = [ `Speaking of int (* ssrc *) * bool (* speaking *) ]
 
-type t = { m : item Mailbox.t }
+type init_arg = {
+  ip : string;
+  port : int;
+  ssrc : int;
+  vgw : vgw_cast_msg Gen_server.caster;
+}
 
-exception Reconnect of connection_param
+type call_msg = [ `DiscoverIP ]
+type call_reply = [ `DiscoverIP of string (* ip *) * int (* port *) ]
 
-let encryption_mode = "xsalsa20_poly1305"
-let frame_size = 960
-let second_per_frame = 0.02
-let sample_rate = 48000
-let channels = 2
-let application = Opus.Voip
-let num_burst_frames = 10
+type cast_msg =
+  [ `SecretKey of int list | `Frame of string | `Timeout of string ]
 
-let with_udp_connection env sw ip port f =
-  let socket =
-    Eio.Net.datagram_socket ~sw (Eio.Stdenv.net env)
-      (`Udp (Eio.Net.Ipaddr.V4.any, 0))
-  in
-  let dst =
-    `Udp
-      ( Ipaddr.of_string ip |> Result.get_ok |> Ipaddr.to_octets
-        |> Eio.Net.Ipaddr.of_raw,
-        port )
-  in
-  let send = Eio.Net.send ~dst socket in
-  let recv = Eio.Net.recv socket in
-  Fun.protect ~finally:(fun () -> Eio.Net.close socket) (fun () -> f send recv)
+type state = {
+  socket : Eio.Net.datagram_socket;
+  dst : Eio.Net.Sockaddr.datagram;
+  ssrc : int;
+  secret_key : Sodium.secret Sodium.Secret_box.key option;
+  frames : string list (* reversed order *);
+  speaking : bool; [@default false]
+  vgw : vgw_cast_msg Gen_server.caster;
+  seq_num : int;
+  timestamp : int;
+  opus_encoder : Opus.Encoder.t;
+}
+[@@deriving make]
 
-let send_json conn json =
-  let content = Yojson.Safe.to_string json in
-  Logs.info (fun m -> m "Sending: %s" content);
-  Ws.write conn Websocket.Frame.(create ~opcode:Opcode.Text ~content ())
+let udp_send { socket; dst; _ } = Eio.Net.send ~dst socket
+let udp_recv { socket; _ } = Eio.Net.recv socket
 
-let perform_ip_discovery ssrc send recv =
+let discover_ip ssrc send recv =
   (* IP Discovery: send a request *)
   let buf = Cstruct.create 74 in
   Cstruct.BE.set_uint16 buf 0 0x01;
@@ -66,29 +70,12 @@ let perform_ip_discovery ssrc send recv =
   let port = Cstruct.BE.get_uint16 buf 72 in
   (ip, port)
 
-let send_select_protocol conn ip port modes =
-  if modes |> List.find_opt (fun m -> m = encryption_mode) = None then
-    failwith (encryption_mode ^ " is not supported");
-  Voice_event.(
-    SelectProtocol
-      {
-        protocol = "udp";
-        data = { address = ip; port; mode = encryption_mode };
-      }
-    |> to_yojson)
-  |> send_json conn
+let send_speaking state v = state.vgw#cast (`Speaking (state.ssrc, v))
 
-let receive_secret_key mailbox =
-  match Mailbox.receive mailbox with
-  | SecretKey secret_key ->
-      secret_key |> List.map char_of_int |> List.to_seq |> Bytes.of_seq
-      |> Sodium.Secret_box.Bytes.to_key
-  | _ -> failwith "unexpected event"
-
-let send_frame opus_encoder seq_num timestamp ssrc secret_key udp_send frame =
+let send_frame state frame =
   let opus =
     match frame with
-    | `PCM_S16LE pcm -> Opus.Encoder.encode opus_encoder (`S16LE pcm)
+    | `PCM_S16LE pcm -> Opus.Encoder.encode state.opus_encoder (`S16LE pcm)
     | `Opus opus -> Bytes.of_string opus
   in
 
@@ -96,9 +83,9 @@ let send_frame opus_encoder seq_num timestamp ssrc secret_key udp_send frame =
   let header = Cstruct.create 12 in
   Cstruct.set_uint8 header 0 0x80;
   Cstruct.set_uint8 header 1 0x78;
-  Cstruct.BE.set_uint16 header 2 !seq_num (* Sequence *);
-  Cstruct.BE.set_uint32 header 4 (Int32.of_int !timestamp) (* Timestamp *);
-  Cstruct.BE.set_uint32 header 8 (Int32.of_int ssrc);
+  Cstruct.BE.set_uint16 header 2 state.seq_num (* Sequence *);
+  Cstruct.BE.set_uint32 header 4 (Int32.of_int state.timestamp) (* Timestamp *);
+  Cstruct.BE.set_uint32 header 8 (Int32.of_int state.ssrc);
 
   (* Encrypt the voice data *)
   let nonce =
@@ -107,107 +94,132 @@ let send_frame opus_encoder seq_num timestamp ssrc secret_key udp_send frame =
     buf |> Cstruct.to_bytes |> Sodium.Secret_box.nonce_of_bytes
   in
   let ctxt =
-    Sodium.Secret_box.Bytes.secret_box secret_key opus nonce |> Cstruct.of_bytes
+    Sodium.Secret_box.Bytes.secret_box (Option.get state.secret_key) opus nonce
+    |> Cstruct.of_bytes
   in
 
   (* Send the data *)
-  udp_send [ header; ctxt ];
+  udp_send state [ header; ctxt ];
 
   (* Increment sequence number and timestamp *)
-  seq_num := !seq_num + 1;
-  timestamp := !timestamp + frame_size;
+  {
+    state with
+    seq_num = state.seq_num + 1;
+    timestamp = state.timestamp + frame_size;
+  }
 
-  ()
+let start_sending_frames clock ~sw state caster =
+  let start_time = Eio.Time.now clock in
 
-let send_speaking conn ssrc speaking =
-  Voice_event.(
-    Speaking { speaking = (if speaking then 1 else 0); delay = 0; ssrc }
-    |> to_yojson)
-  |> send_json conn
+  match state.frames |> List.rev |> List.take_at_most num_burst_frames with
+  | [], _ ->
+      let state =
+        five_silent_frames
+        |> List.fold_left
+             (fun state opus -> send_frame state (`Opus opus))
+             state
+      in
+      send_speaking state false;
+      { state with speaking = false }
+  | heads, rest ->
+      if not state.speaking then send_speaking state true;
 
-exception Shutdown
+      let state =
+        heads
+        |> List.fold_left
+             (fun state frame -> send_frame state (`PCM_S16LE frame))
+             state
+      in
 
-let main _config env sw { vgw_conn; ip; port; ssrc; modes } mailbox () =
-  let encoder = Opus.Encoder.create ~sample_rate ~channels ~application in
-  let seq_num = ref 123 (* FIXME: should be random *) in
-  let timestamp = ref 123456 (* FIXME: should be random *) in
+      let end_time = Eio.Time.now clock in
+      let diff = end_time -. start_time in
+      Gen_server.start_timeout clock ~sw
+        ((second_per_frame *. float_of_int (List.length heads)) -. diff)
+        "" caster;
 
-  with_udp_connection env sw ip port @@ fun udp_send udp_recv ->
-  let my_ip, my_port = perform_ip_discovery ssrc udp_send udp_recv in
-  send_select_protocol vgw_conn my_ip my_port modes;
-  let secret_key = receive_secret_key mailbox in
+      { state with speaking = true; frames = List.rev rest }
 
-  let five_silent_frames = List.init 5 (fun _ -> "\xf8\xff\xfe") in
+class t =
+  object (self)
+    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
 
-  let rec send_loop () =
-    let start_time = Eio.Time.now (Eio.Stdenv.clock env) in
-    let empty = Mailbox.is_empty mailbox in
+    method private init env ~sw { ip; port; ssrc; vgw } =
+      let socket =
+        Eio.Net.datagram_socket ~sw (Eio.Stdenv.net env)
+          (`Udp (Eio.Net.Ipaddr.V4.any, 0))
+      in
+      let dst =
+        `Udp
+          ( Ipaddr.of_string ip |> Result.get_ok |> Ipaddr.to_octets
+            |> Eio.Net.Ipaddr.of_raw,
+            port )
+      in
+      let seq_num = 123 (* FIXME *) in
+      let timestamp = 123456 (* FIXME *) in
+      let opus_encoder =
+        Opus.Encoder.create ~sample_rate ~channels ~application
+      in
+      make_state ~socket ~dst ~ssrc ~vgw ~seq_num ~timestamp ~opus_encoder ()
 
-    if empty then (
-      (* End of the speech *)
-      five_silent_frames
-      |> List.iter (fun opus ->
-             send_frame encoder seq_num timestamp ssrc secret_key udp_send
-               (`Opus opus));
-      send_speaking vgw_conn ssrc false);
+    method! private terminate _ ~sw:_ state = Eio.Net.close state.socket
 
-    let head_frame =
-      match Mailbox.receive mailbox with
-      | Connect param -> raise (Reconnect param)
-      | SecretKey _ -> failwith "duplicated secret_key"
-      | Frame frame -> frame
-      | Close -> raise Shutdown
-    in
-    let start_time =
-      if empty then Eio.Time.now (Eio.Stdenv.clock env) else start_time
-    in
-    let frames =
-      List.init (num_burst_frames - 1) (fun _ ->
-          match Mailbox.receive_nowait mailbox with
-          | Some (Connect param) -> raise (Reconnect param)
-          | Some (SecretKey _) -> failwith "duplicated secret_key"
-          | Some (Frame frame) -> Some frame
-          | Some Close -> raise Shutdown
-          | None -> None)
-      |> List.filter_map Fun.id |> List.cons head_frame
-    in
+    method! private handle_call _env ~sw:_ state =
+      function
+      | `DiscoverIP ->
+          let addr = discover_ip state.ssrc (udp_send state) (udp_recv state) in
+          `Reply (`DiscoverIP addr, state)
 
-    if empty then (* Beginning of the speech *)
-      send_speaking vgw_conn ssrc true;
+    method! private handle_cast env ~sw state =
+      function
+      | `SecretKey key ->
+          let secret_key =
+            key |> List.map char_of_int |> List.to_seq |> Bytes.of_seq
+            |> Sodium.Secret_box.Bytes.to_key |> Option.some
+          in
+          `NoReply { state with secret_key }
+      | `Frame _ when Option.is_none state.secret_key -> `NoReply state
+      | `Frame frame ->
+          let state = { state with frames = frame :: state.frames } in
+          let state =
+            if state.speaking then state
+            else start_sending_frames (Eio.Stdenv.clock env) ~sw state self
+          in
+          `NoReply state
+      | `Timeout _ ->
+          let state =
+            start_sending_frames (Eio.Stdenv.clock env) ~sw state self
+          in
+          `NoReply state
+  end
 
-    frames
-    |> List.iter (fun frame ->
-           send_frame encoder seq_num timestamp ssrc secret_key udp_send
-             (`PCM_S16LE frame));
+let create () = new t
 
-    let end_time = Eio.Time.now (Eio.Stdenv.clock env) in
-    let diff = end_time -. start_time in
-    Eio.Time.sleep (Eio.Stdenv.clock env)
-      ((second_per_frame *. float_of_int (List.length frames)) -. diff);
+let connect env sw t { vgw_conn; ip; port; ssrc; _ } =
+  t#start env ~sw
+    {
+      ip;
+      port;
+      ssrc;
+      vgw =
+        object
+          method cast =
+            function
+            | `Speaking (ssrc, speaking) ->
+                let send_json conn json =
+                  let content = Yojson.Safe.to_string json in
+                  Logs.info (fun m -> m "Sending: %s" content);
+                  Ws.write conn
+                    Websocket.Frame.(create ~opcode:Opcode.Text ~content ())
+                in
+                Voice_event.(
+                  Speaking
+                    { speaking = (if speaking then 1 else 0); delay = 0; ssrc }
+                  |> to_yojson)
+                |> send_json vgw_conn
+        end;
+    }
 
-    send_loop ()
-  in
-  (try send_loop () with Shutdown -> ());
-
-  ()
-
-let connector config env sw m () =
-  let rec loop param =
-    try main config env sw param m () with Reconnect param -> loop param
-  in
-  match Mailbox.receive m with
-  | Connect param -> loop param
-  | _ -> failwith "Invalid event"
-
-let spawn config env sw =
-  let m = Mailbox.create () in
-  Eio.Fiber.fork ~sw (connector config env sw m);
-  { m }
-
-let connect { m; _ } param = Connect param |> Mailbox.send m
-let send_frame { m; _ } frame = Mailbox.send m (Frame frame)
-
-let attach_secret_key { m; _ } secret_key =
-  Mailbox.send m (SecretKey secret_key)
-
-let close { m; _ } = Mailbox.send m Close
+let send_frame t frame = t#cast (`Frame frame)
+let attach_secret_key t key = t#cast (`SecretKey key)
+let close t = t#stop
+let discover_ip (t : t) = match t#call `DiscoverIP with `DiscoverIP r -> r

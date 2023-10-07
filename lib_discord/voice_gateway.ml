@@ -1,158 +1,196 @@
-type msg =
-  | VoiceState of { user_id : string; session_id : string }
-  | VoiceServer of { token : string; endpoint : string }
+let encryption_mode = "xsalsa20_poly1305"
 
-type t = { udp_stream : Voice_udp_stream.t; mailbox : msg Mailbox.t }
+type consumer_cast_msg = Event.t
+
+type init_arg = {
+  guild_id : string;
+  consumer : consumer_cast_msg Gen_server.caster;
+}
+
+type call_msg = |
+type call_reply = |
+type voice_state = { user_id : string; session_id : string }
+type voice_server = { token : string; endpoint : string }
+
+type cast_msg =
+  [ `VoiceState of voice_state
+  | `VoiceServer of voice_server
+  | `WSText of string
+  | `WSClose of int
+  | `Timeout of [ `Heartbeat ]
+  | `Frame of string ]
+
+type process_status = WaitingParameters | Running
+
+type state = {
+  guild_id : string;
+  consumer : consumer_cast_msg Gen_server.caster;
+  udp_stream : Voice_udp_stream.t;
+  voice_state : voice_state option;
+  voice_server : voice_server option;
+  status : process_status; [@default WaitingParameters]
+  ws_conn : Ws.conn option;
+  heartbeat_interval : float option;
+}
+[@@deriving make]
 
 let send_json conn json =
   let content = Yojson.Safe.to_string json in
   Logs.info (fun m -> m "Sending: %s" content);
   Ws.write conn Websocket.Frame.(create ~opcode:Opcode.Text ~content ())
 
+let send_select_protocol conn ip port modes =
+  if modes |> List.find_opt (fun m -> m = encryption_mode) = None then
+    failwith (encryption_mode ^ " is not supported");
+  Voice_event.(
+    SelectProtocol
+      {
+        protocol = "udp";
+        data = { address = ip; port; mode = encryption_mode };
+      }
+    |> to_yojson)
+  |> send_json conn
+
 let send_heartbeat clock conn =
   let nonce = Eio.Time.now clock |> int_of_float in
   Voice_event.(Heartbeat nonce |> to_yojson) |> send_json conn;
   Logs.info (fun m -> m "Voice Heartbeat sent")
 
-exception Shutdown
-
-let main_heartbeat clock mailbox =
-  (* FIXME: VGWConn should be handled during the sleep *)
-  let rec loop interval conn =
-    let interval, conn =
-      match Mailbox.receive_nowait mailbox with
-      | None -> (interval, conn)
-      | Some (`VGWConn (Some interval, conn)) -> (interval, conn)
-      | Some (`VGWConn (None, conn)) -> (interval, conn)
-      | Some `Close -> raise Shutdown
-    in
-    (try send_heartbeat clock conn
-     with e ->
-       Logs.err (fun m ->
-           m "Failed to send heartbeat: %s" (Printexc.to_string e)));
-    (* FIXME: Although `/. 2.0` is not necessary in theory, ws and udp connections
-       don't maintain without this hack. *)
-    Eio.Time.sleep clock (interval /. 2.0);
-    loop interval conn
-  in
-  let interval, conn =
-    match Mailbox.receive mailbox with
-    | `VGWConn (Some interval, conn) -> (interval, conn)
-    | _ -> failwith "Invalid initial VGWConn"
-  in
-  try loop interval conn with Shutdown -> ()
-
-let spawn_heartbeat clock sw mailbox =
-  Eio.Fiber.fork ~sw (fun () -> main_heartbeat clock mailbox)
-
-let event_handler _config _env _sw vgw_conn udp_stream guild_id
-    heartbeat_mailbox consumer_mailbox = function
-  | Voice_event.Hello { heartbeat_interval } ->
-      let interval = float_of_int heartbeat_interval /. 1000.0 in
-      Mailbox.send heartbeat_mailbox (`VGWConn (Some interval, vgw_conn))
-  | Resumed -> Mailbox.send heartbeat_mailbox (`VGWConn (None, vgw_conn))
-  | Heartbeat _ | HeartbeatAck _ ->
-      (*
-          FIXME: Although the Discord doc says that the server will return
-          HeartbeatAck (opcode 6) in response to Heartbeat (opcode 3) from its clients,
-          it seems to actually return Heartbeat.
-        *)
-      ()
-  | Ready { ip; port; ssrc; modes; _ } ->
-      Voice_udp_stream.connect udp_stream { vgw_conn; ip; port; ssrc; modes }
-  | SessionDescription { secret_key; _ } ->
-      Voice_udp_stream.attach_secret_key udp_stream secret_key;
-      Mailbox.send consumer_mailbox (Event.VoiceReady { guild_id })
-  | Identify _ | SelectProtocol _ | Speaking _ | Resume _ ->
-      failwith "Unexpected event"
-
-let receive_ids mailbox =
-  let ref_endpoint = ref None in
-  let ref_token = ref None in
-  let ref_session_id = ref None in
-  let ref_user_id = ref None in
-  while
-    !ref_endpoint = None || !ref_token = None || !ref_session_id = None
-    || !ref_user_id = None
-  do
-    match Mailbox.receive mailbox with
-    | VoiceState { user_id; session_id } ->
-        ref_user_id := Some user_id;
-        ref_session_id := Some session_id
-    | VoiceServer { token; endpoint } ->
-        ref_token := Some token;
-        ref_endpoint := Some endpoint
-  done;
-  ( Option.get !ref_endpoint,
-    Option.get !ref_token,
-    Option.get !ref_session_id,
-    Option.get !ref_user_id )
-
-let main env sw config guild_id consumer_mailbox udp_stream mailbox () =
-  let endpoint, token, session_id, user_id = receive_ids mailbox in
-
-  let heartbeat_mailbox = Mailbox.create () in
-  spawn_heartbeat (Eio.Stdenv.clock env) sw heartbeat_mailbox;
-
-  let connect_ws () =
+let connect_ws env ~sw state =
+  let endpoint = (Option.get state.voice_server).endpoint in
+  let conn =
     Ws.connect ~sw env ("https://" ^ endpoint ^ "/?v=4&encoding=json")
   in
-  let conn = ref @@ connect_ws () in
+  conn
 
-  Voice_event.(
-    Identify { server_id = guild_id; user_id; session_id; token } |> to_yojson)
-  |> send_json !conn;
-  let rec loop () =
-    let frame = Ws.read !conn in
-    Logs.info (fun m -> m "Received (voice): %a" Websocket.Frame.pp frame);
-    match frame.opcode with
-    | Text ->
-        (try
-           frame.content |> Yojson.Safe.from_string |> Voice_event.of_yojson
-           |> event_handler config env sw !conn udp_stream guild_id
-                heartbeat_mailbox consumer_mailbox
-         with e ->
-           Logs.err (fun m ->
-               m "Handling event failed (voice): %s: %s" (Printexc.to_string e)
-                 frame.content));
-        loop ()
-    | Close ->
-        let status_code = String.get_int16_be frame.content 0 in
-        Logs.warn (fun m ->
-            m "Voice Websocket connection closed: code %d" status_code);
-        if status_code = 4015 then (
+class t =
+  object (self)
+    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+
+    method private init _env ~sw:_ { guild_id; consumer } =
+      let udp_stream = Voice_udp_stream.create () in
+      make_state ~guild_id ~consumer ~udp_stream ()
+
+    method! private terminate _ ~sw:_ state =
+      Voice_udp_stream.close state.udp_stream;
+      ()
+
+    method start_running env ~sw state =
+      let token = (Option.get state.voice_server).token in
+      let user_id = (Option.get state.voice_state).user_id in
+      let session_id = (Option.get state.voice_state).session_id in
+
+      let conn = connect_ws env ~sw state in
+      Gen_server.start_ws_receiving ~sw conn self;
+
+      Voice_event.(
+        Identify { server_id = state.guild_id; user_id; session_id; token }
+        |> to_yojson)
+      |> send_json conn;
+
+      { state with status = Running; ws_conn = Some conn }
+
+    method start_running_if_ready env ~sw state =
+      if
+        Option.is_some state.voice_server
+        && Option.is_some state.voice_state
+        && state.status = WaitingParameters
+      then self#start_running env ~sw state
+      else state
+
+    method handle_voice_event env ~sw state =
+      function
+      | Voice_event.Hello { heartbeat_interval } ->
+          let interval = float_of_int heartbeat_interval /. 1000.0 in
+          let interval =
+            interval /. 2.0
+            (* FIXME: Although `/. 2.0` is not necessary in theory, ws and udp connections
+               don't maintain without this hack. *)
+          in
+          if Option.is_none state.heartbeat_interval then
+            Gen_server.start_timeout (Eio.Stdenv.clock env) ~sw interval
+              `Heartbeat self;
+          { state with heartbeat_interval = Some interval }
+      | Resumed | Heartbeat _ | HeartbeatAck _ ->
+          (*
+              FIXME: Although the Discord doc says that the server will return
+              HeartbeatAck (opcode 6) in response to Heartbeat (opcode 3) from its clients,
+              it seems to actually return Heartbeat.
+            *)
+          state
+      | Ready { ip; port; ssrc; modes; _ } ->
+          let ws_conn = Option.get state.ws_conn in
+          Voice_udp_stream.connect env sw state.udp_stream
+            { vgw_conn = ws_conn; ip; port; ssrc; modes };
+          let my_addr, my_port =
+            Voice_udp_stream.discover_ip state.udp_stream
+          in
+          send_select_protocol ws_conn my_addr my_port modes;
+          state
+      | SessionDescription { secret_key; _ } ->
+          Voice_udp_stream.attach_secret_key state.udp_stream secret_key;
+          state.consumer#cast (Event.VoiceReady { guild_id = state.guild_id });
+          state
+      | Identify _ | SelectProtocol _ | Speaking _ | Resume _ ->
+          failwith "Unexpected event"
+
+    method! private handle_cast env ~sw state =
+      function
+      | `VoiceState x ->
+          let state = { state with voice_state = Some x } in
+          `NoReply (self#start_running_if_ready env ~sw state)
+      | `VoiceServer x ->
+          let state = { state with voice_server = Some x } in
+          `NoReply (self#start_running_if_ready env ~sw state)
+      | `Timeout `Heartbeat ->
+          let clock = Eio.Stdenv.clock env in
+          send_heartbeat clock (Option.get state.ws_conn);
+          Gen_server.start_timeout clock ~sw
+            (Option.get state.heartbeat_interval)
+            `Heartbeat self;
+          `NoReply state
+      | `WSText content -> (
+          try
+            content |> Yojson.Safe.from_string |> Voice_event.of_yojson
+            |> self#handle_voice_event env ~sw state
+            |> fun state -> `NoReply state
+          with e ->
+            Logs.err (fun m ->
+                m "Handling event failed (voice): %s: %s" (Printexc.to_string e)
+                  content);
+            `NoReply state)
+      | `WSClose 4015 ->
           Logs.info (fun m ->
               m "Discord voice server crashed. Trying to resume.");
-          conn := connect_ws ();
-          Voice_event.(
-            Resume { server_id = guild_id; session_id; token } |> to_yojson)
-          |> send_json !conn;
-          loop ())
-    | _ ->
-        Logs.info (fun m ->
-            m "Received non-text frame (voice): %a" Websocket.Frame.pp frame);
-        loop ()
-  in
-  loop ();
+          let ws_conn = connect_ws env ~sw state in
+          let server_id = state.guild_id in
+          let token = (Option.get state.voice_server).token in
+          let session_id = (Option.get state.voice_state).session_id in
+          Voice_event.(Resume { server_id; session_id; token } |> to_yojson)
+          |> send_json ws_conn;
+          `NoReply { state with ws_conn = Some ws_conn }
+      | `WSClose _ -> `Stop
+      | `Frame frame ->
+          Voice_udp_stream.send_frame state.udp_stream frame;
+          `NoReply state
+  end
 
-  (* Gracefully shutdown *)
-  Mailbox.close mailbox;
-  Mailbox.send heartbeat_mailbox `Close;
-  Mailbox.close heartbeat_mailbox;
-  Voice_udp_stream.close udp_stream;
-  ()
+let spawn _config env sw consumer_mailbox ~guild_id =
+  let t = new t in
+  t#start env ~sw
+    {
+      guild_id;
+      consumer =
+        object
+          method cast e = Mailbox.send consumer_mailbox e
+        end;
+    };
+  t
 
-let spawn config env sw consumer_mailbox ~guild_id =
-  let mailbox = Mailbox.create () in
-  let udp_stream = Voice_udp_stream.spawn config env sw in
-  Eio.Fiber.fork ~sw
-    (main env sw config guild_id consumer_mailbox udp_stream mailbox);
-  { udp_stream; mailbox }
+let attach_voice_state ~user_id ~session_id t =
+  t#cast (`VoiceState { user_id; session_id })
 
-let attach_voice_state ~user_id ~session_id { mailbox; _ } =
-  Mailbox.send mailbox (VoiceState { user_id; session_id })
+let attach_voice_server ~token ~endpoint t =
+  t#cast (`VoiceServer { token; endpoint })
 
-let attach_voice_server ~token ~endpoint { mailbox; _ } =
-  Mailbox.send mailbox (VoiceServer { token; endpoint })
-
-let send_frame t frame = Voice_udp_stream.send_frame t.udp_stream frame
+let send_frame t frame = t#cast (`Frame frame)
