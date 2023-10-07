@@ -33,6 +33,8 @@ type state = {
 }
 [@@deriving make]
 
+type Gen_server.stop_reason += Restart
+
 let send_json conn json =
   let content = Yojson.Safe.to_string json in
   Logs.info (fun m -> m "Sending: %s" content);
@@ -63,7 +65,7 @@ class t =
       let udp_stream = Voice_udp_stream.create () in
       make_state ~guild_id ~consumer ~udp_stream ()
 
-    method! private terminate _ ~sw:_ state =
+    method! private terminate _ ~sw:_ state _reason =
       Voice_udp_stream.close state.udp_stream;
       ()
 
@@ -168,9 +170,11 @@ class t =
           Voice_event.(Resume { server_id; session_id; token } |> to_yojson)
           |> send_json ws_conn;
           `NoReply { state with ws_conn = Some ws_conn }
-      | `WSClose _ ->
+      | `WSClose reason ->
           Logs.info (fun m -> m "Voice gateway WS connection closed");
           `Stop
+            ( (if reason = `Status_code 4014 then Gen_server.Normal else Restart),
+              state )
       | `Frame frame ->
           Voice_udp_stream.send_frame state.udp_stream frame;
           `NoReply state

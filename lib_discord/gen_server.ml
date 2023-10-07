@@ -1,13 +1,12 @@
-type ('a, 'state) call_result = [ `Reply of 'a * 'state | `Stop ]
-type 'state cast_result = [ `NoReply of 'state | `Stop ]
+type stop_reason = ..
+type stop_reason += Normal | Exn of string
+
+type ('a, 'state) call_result =
+  [ `Reply of 'a * 'state | `Stop of stop_reason * 'a * 'state ]
+
+type 'state cast_result = [ `NoReply of 'state | `Stop of stop_reason * 'state ]
 
 class type ['init_arg, 'call_msg, 'call_reply, 'cast_msg] intf = object
-  val m :
-    [ `Call of 'call_msg * 'call_reply Eio.Stream.t
-    | `Cast of 'cast_msg
-    | `Stop of unit Eio.Stream.t ]
-    Mailbox.t
-
   method call : 'call_msg -> 'call_reply
   method cast : 'cast_msg -> unit
 
@@ -26,7 +25,7 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
     val m
         : [ `Cast of 'cast_msg
           | `Call of 'call_msg * 'call_reply Eio.Stream.t
-          | `Stop of unit Eio.Stream.t ]
+          | `Stop of stop_reason * unit Eio.Stream.t ]
           Mailbox.t =
       Mailbox.create ()
 
@@ -42,14 +41,49 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
       failwith "not implemented"
 
     method private terminate (_ : Eio_unix.Stdenv.base) ~sw:(_ : Eio.Switch.t)
-        (_ : 'state) =
+        (_ : 'state) (_ : stop_reason) =
       ()
 
-    (*
-    method supervise (env : Eio_unix.Stdenv.base) ~sw:(_ : Eio.Switch.t) : unit
-        =
-      ()
-*)
+    method private run (env : Eio_unix.Stdenv.base) ~(sw : Eio.Switch.t)
+        (args : 'init_arg) : stop_reason =
+      let state = self#init env ~sw args in
+      let rec loop state =
+        match Mailbox.receive m with
+        | `Call (msg, reply_stream) -> (
+            match self#handle_call env ~sw state msg with
+            | exception e ->
+                let reason = Exn (Printexc.to_string e) in
+                (* NOTE: reply_stream will be dead locked *)
+                (reason, state)
+            | `Reply (reply, state) ->
+                Eio.Stream.add reply_stream reply;
+                loop state
+            | `Stop (reason, reply, state) ->
+                Eio.Stream.add reply_stream reply;
+                (reason, state))
+        | `Cast msg -> (
+            match self#handle_cast env ~sw state msg with
+            | exception e ->
+                let reason = Exn (Printexc.to_string e) in
+                (reason, state)
+            | `NoReply state -> loop state
+            | `Stop (reason, state) -> (reason, state))
+        | `Stop (reason, reply_stream) ->
+            Eio.Stream.add reply_stream ();
+            (reason, state)
+      in
+      let reason, state = loop state in
+      self#terminate env ~sw state reason;
+      reason
+
+    method private supervise (env : Eio_unix.Stdenv.base) ~sw:(_ : Eio.Switch.t)
+        (args : 'init_arg) : unit =
+      (* FIXME: Add rate limit *)
+      let rec loop () =
+        let reason = Eio.Switch.run (fun sw -> self#run env ~sw args) in
+        match reason with Normal -> () | _ -> loop ()
+      in
+      loop ()
 
     method start env ~sw (args : 'init_arg) =
       let already_running =
@@ -58,25 +92,7 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
       if already_running then ()
       else
         Eio.Fiber.fork ~sw @@ fun () ->
-        let state = self#init env ~sw args in
-        let rec loop state =
-          match Mailbox.receive m with
-          | `Call (msg, reply_stream) -> (
-              match self#handle_call env ~sw state msg with
-              | `Reply (reply, state) ->
-                  Eio.Stream.add reply_stream reply;
-                  loop state
-              | `Stop -> ())
-          | `Cast msg -> (
-              match self#handle_cast env ~sw state msg with
-              | `NoReply state -> loop state
-              | `Stop -> ())
-          | `Stop reply_stream ->
-              self#terminate env ~sw state;
-              Eio.Stream.add reply_stream ();
-              ()
-        in
-        loop state;
+        self#supervise env ~sw args;
         Atomic.set running Stopped
 
     method stop =
@@ -84,7 +100,7 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
       if not_running then ()
       else
         let stream = Eio.Stream.create 0 in
-        Mailbox.send m (`Stop stream);
+        Mailbox.send m (`Stop (Normal, stream));
         Eio.Stream.take stream
 
     method call (msg : 'call_msg) : 'call_reply =

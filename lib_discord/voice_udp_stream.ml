@@ -161,7 +161,7 @@ class t =
       in
       make_state ~socket ~dst ~ssrc ~vgw ~seq_num ~timestamp ~opus_encoder ()
 
-    method! private terminate _ ~sw:_ state = Eio.Net.close state.socket
+    method! private terminate _ ~sw:_ state _reason = Eio.Net.close state.socket
 
     method! private handle_call _env ~sw:_ state =
       function

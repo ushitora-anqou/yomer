@@ -33,6 +33,8 @@ type state = {
 }
 [@@deriving make]
 
+type Gen_server.stop_reason += Restart
+
 let send_json conn json =
   let content = Yojson.Safe.to_string json in
   Logs.info (fun m -> m "Sending: %s" content);
@@ -83,7 +85,7 @@ class t =
       let ws_conn = self#connect_ws env ~sw in
       make_state ~consumer ~ws_conn ~config ~st ()
 
-    method! private terminate _ ~sw:_ _state = ()
+    method! private terminate _ ~sw:_ _state _reason = ()
 
     method handle_event env ~sw state =
       let open Event in
@@ -123,8 +125,10 @@ class t =
           let self_user_id = State.me state.st |> Option.get in
           (if user_id = self_user_id.User.id then
              let g = State.guild_data state.st guild_id |> Option.get in
-             let vgw = Option.get g.voice |> snd in
-             Voice_gateway.attach_voice_state ~user_id ~session_id vgw);
+             match g.voice with
+             | None -> ()
+             | Some (_, vgw) ->
+                 Voice_gateway.attach_voice_state ~user_id ~session_id vgw);
 
           State.update_guild_data state.st guild_id (fun data ->
               (* Update data.voice_states *)
@@ -192,7 +196,9 @@ class t =
             `NoReply state
           with e ->
             Logs.err (fun m ->
-                m "Handling event failed: %s: %s" (Printexc.to_string e) content);
+                m "Handling event failed: %s: %s: %s" (Printexc.to_string e)
+                  content
+                  (Printexc.get_backtrace ()));
             `NoReply state)
       | `WSClose (`Status_code (4000 | 4009) | `Unknown) ->
           Logs.info (fun m ->
@@ -202,7 +208,7 @@ class t =
           `NoReply (self#resume_ws env ~sw state)
       | `WSClose _ ->
           Logs.info (fun m -> m "Gateway WS connection closed.");
-          `Stop
+          `Stop (Restart, state)
   end
 
 let spawn config env sw state consumer_mailbox =
