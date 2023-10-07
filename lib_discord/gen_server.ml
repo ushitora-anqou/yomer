@@ -104,7 +104,10 @@ let start_timeout clock ~sw timeout id (caster : _ #caster) =
   Eio.Time.sleep clock timeout;
   caster#cast (`Timeout id)
 
-let start_ws_receiving ~sw conn (caster : _ #caster) =
+type ws_cast_msg =
+  [ `WSText of string | `WSClose of [ `Status_code of int | `Unknown ] ]
+
+let start_ws_receiving ~sw conn (caster : [> ws_cast_msg ] #caster) =
   Eio.Fiber.fork ~sw @@ fun () ->
   let rec loop () =
     try
@@ -122,14 +125,14 @@ let start_ws_receiving ~sw conn (caster : _ #caster) =
           let status_code = String.get_int16_be frame.content 0 in
           Logs.warn (fun m ->
               m "Websocket connection closed: code %d" status_code);
-          caster#cast (`WSClose status_code)
+          caster#cast (`WSClose (`Status_code status_code))
       | _ ->
           Logs.info (fun m ->
               m "Received non-text ws frame: %a" Websocket.Frame.pp frame);
           loop ()
     with e ->
       Logs.err (fun m -> m "Ws receiving failed: %s" (Printexc.to_string e));
-      caster#cast (`WSClose (-1))
+      caster#cast (`WSClose `Unknown)
   in
   loop ()
 

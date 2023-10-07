@@ -15,10 +15,9 @@ type voice_server = { token : string; endpoint : string }
 type cast_msg =
   [ `VoiceState of voice_state
   | `VoiceServer of voice_server
-  | `WSText of string
-  | `WSClose of int
   | `Timeout of [ `Heartbeat ]
-  | `Frame of string ]
+  | `Frame of string
+  | Gen_server.ws_cast_msg ]
 
 type process_status = WaitingParameters | Running
 
@@ -159,7 +158,7 @@ class t =
                 m "Handling event failed (voice): %s: %s" (Printexc.to_string e)
                   content);
             `NoReply state)
-      | `WSClose 4015 ->
+      | `WSClose (`Status_code 4015) ->
           Logs.info (fun m ->
               m "Discord voice server crashed. Trying to resume.");
           let ws_conn = self#connect_ws env ~sw state in

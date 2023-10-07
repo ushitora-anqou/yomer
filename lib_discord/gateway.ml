@@ -20,9 +20,8 @@ type voice_state = {
 
 type cast_msg =
   [ `VoiceStateUpdate of voice_state
-  | `WSText of string
-  | `WSClose of int
-  | `Timeout of [ `Heartbeat ] ]
+  | `Timeout of [ `Heartbeat ]
+  | Gen_server.ws_cast_msg ]
 
 type state = {
   consumer : consumer_cast_msg Gen_server.caster;
@@ -30,6 +29,7 @@ type state = {
   heartbeat_interval : float option;
   st : State.t;
   config : Config.t;
+  resume : (string (* resume_gateway_url *) * string (* session_id *)) option;
 }
 [@@deriving make]
 
@@ -55,6 +55,29 @@ class t =
       let conn = Ws.connect ~sw env endpoint in
       Gen_server.start_ws_receiving ~sw conn self;
       conn
+
+    method resume_ws env ~sw state =
+      (* Reconnect *)
+      let resume_gateway_url, session_id = Option.get state.resume in
+      let url =
+        let u = Uri.of_string resume_gateway_url in
+        let u = Uri.with_scheme u (Some "https") in
+        let u =
+          Uri.with_query u [ ("v", [ "10" ]); ("encoding", [ "json" ]) ]
+        in
+        Uri.to_string u
+      in
+      let conn = Ws.connect ~sw env url in
+      Gen_server.start_ws_receiving ~sw conn self;
+
+      (* Send Resume event *)
+      let seq = State.s state.st in
+      Event.(
+        Resume { token = Config.token state.config; session_id; seq }
+        |> to_yojson)
+      |> send_json conn;
+
+      { state with ws_conn = conn }
 
     method private init env ~sw { consumer; config; state = st } =
       let ws_conn = self#connect_ws env ~sw in
@@ -120,9 +143,9 @@ class t =
           let vgw = Option.get g.voice |> snd in
           Voice_gateway.attach_voice_server ~token ~endpoint vgw;
           state
-      | Dispatch (READY { user; _ }) ->
+      | Dispatch (READY { user; resume_gateway_url; session_id; _ }) ->
           State.set_me state.st (Some user);
-          state
+          { state with resume = Some (resume_gateway_url, session_id) }
       | Dispatch (GUILD_CREATE json) -> (
           match Guild.of_yojson json with
           | exception _ -> state
@@ -140,8 +163,9 @@ class t =
                       |> Option.value ~default:StringMap.empty;
                   });
               state)
-      | Dispatch _ | VoiceStateUpdate _ -> state
-      | VoiceReady _ | Identify _ -> failwith "Unexpected event"
+      | Reconnect | InvalidSession true -> self#resume_ws env ~sw state
+      | Dispatch _ | VoiceStateUpdate _ | InvalidSession false -> state
+      | VoiceReady _ | Identify _ | Resume _ -> failwith "Unexpected event"
 
     method! private handle_cast env ~sw state =
       function
@@ -170,13 +194,14 @@ class t =
             Logs.err (fun m ->
                 m "Handling event failed: %s: %s" (Printexc.to_string e) content);
             `NoReply state)
-      | `WSClose 4015 ->
+      | `WSClose (`Status_code (4000 | 4009) | `Unknown) ->
           Logs.info (fun m ->
-              m "Discord voice server crashed. Trying to resume.");
-          (* FIXME *)
-          `Stop
+              m
+                "Gateway WS connection closed, but it can be resumed. Trying \
+                 to resume.");
+          `NoReply (self#resume_ws env ~sw state)
       | `WSClose _ ->
-          Logs.info (fun m -> m "Gateway WS connection closed");
+          Logs.info (fun m -> m "Gateway WS connection closed.");
           `Stop
   end
 

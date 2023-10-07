@@ -48,6 +48,9 @@ type t =
       self_mute : bool;
       self_deaf : bool;
     }
+  | (* 6 *) Resume of { token : string; session_id : string; seq : int }
+  | (* 7 *) Reconnect
+  | (* 9 *) InvalidSession of bool
   | (* 10 *) Hello of { heartbeat_interval : int }
   | (* 11 *) HeartbeatAck
   | (* custom *) VoiceReady of { guild_id : string }
@@ -63,6 +66,10 @@ let of_yojson json =
         let d = json |> member "d" in
         `List [ t; d ] |> dispatch_of_yojson |> fun x -> Dispatch x
     | 1 -> Heartbeat None
+    | 7 -> Reconnect
+    | 9 ->
+        let d = json |> member "d" |> to_bool in
+        InvalidSession d
     | 10 ->
         let d = json |> member "d" in
         let heartbeat_interval = d |> member "heartbeat_interval" |> to_int in
@@ -103,6 +110,18 @@ let to_yojson = function
                   |> Option.fold ~none:`Null ~some:(fun s -> `String s) );
                 ("self_mute", `Bool self_mute);
                 ("self_deaf", `Bool self_deaf);
+              ] );
+        ]
+  | Resume { token; session_id; seq } ->
+      `Assoc
+        [
+          ("op", `Int 6);
+          ( "d",
+            `Assoc
+              [
+                ("token", `String token);
+                ("session_id", `String session_id);
+                ("seq", `Int seq);
               ] );
         ]
   | _ -> failwith "Not implemeneted"
