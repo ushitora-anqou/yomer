@@ -2,17 +2,6 @@
 
 type state = { mutable voice_ready : bool } [@@deriving make]
 
-let make_noise_test env guild_id agent =
-  let path =
-    let ( / ) = Eio.Path.( / ) in
-    Eio.Stdenv.cwd env / "misc" / "test.s16le"
-  in
-  let src =
-    Eio.Path.with_open_in path (fun flow ->
-        Eio.Buf_read.(parse ~max_size:max_int take_all flow) |> Result.get_ok)
-  in
-  Discord.Agent.play_voice ~guild_id ~src:(`PCM_S16LE src) agent
-
 class frames_sink agent guild_id =
   object
     inherit Eio.Flow.sink
@@ -96,16 +85,6 @@ let consume_event env state agent = function
   | VoiceReady { guild_id; _ } ->
       Logs.info (fun m -> m "Voice ready for guild %s" guild_id);
       state.voice_ready <- true;
-      (*
-      Eio.Fiber.fork ~sw:agent.sw (fun () ->
-          let rec loop i =
-            Logs.info (fun m -> m "Loop: %d" i);
-            make_noise env guild_id agent;
-            Eio.Time.sleep (Eio.Stdenv.clock env) 10.0;
-            loop (i + 1)
-          in
-          loop 0);
-          *)
       ()
   | _ -> ()
 [@@warning "-11"]
