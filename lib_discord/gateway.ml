@@ -30,6 +30,7 @@ type state = {
   st : State.t;
   config : Config.t;
   resume : (string (* resume_gateway_url *) * string (* session_id *)) option;
+  seq : int;
 }
 [@@deriving make]
 
@@ -40,9 +41,9 @@ let send_json conn json =
   Logs.info (fun m -> m "Sending: %s" content);
   Ws.write conn Websocket.Frame.(create ~opcode:Opcode.Text ~content ())
 
-let send_heartbeat st conn =
+let send_heartbeat seq conn =
   let open Event in
-  Heartbeat (Some (State.s st)) |> to_yojson |> send_json conn
+  Heartbeat (Some seq) |> to_yojson |> send_json conn
 
 let extract_sequence_number src =
   let open Yojson.Safe.Util in
@@ -73,9 +74,9 @@ class t =
       Ws.Process.start ~sw conn self;
 
       (* Send Resume event *)
-      let seq = State.s state.st in
       Event.(
-        Resume { token = Config.token state.config; session_id; seq }
+        Resume
+          { token = Config.token state.config; session_id; seq = state.seq }
         |> to_yojson)
       |> send_json conn;
 
@@ -83,7 +84,7 @@ class t =
 
     method private init env ~sw { consumer; config; state = st } =
       let ws_conn = self#connect_ws env ~sw in
-      make_state ~consumer ~ws_conn ~config ~st ()
+      make_state ~consumer ~ws_conn ~config ~st ~seq:0 ()
 
     method! private terminate _ ~sw:_ _state _reason = ()
 
@@ -116,8 +117,7 @@ class t =
           Logs.info (fun m -> m "Heartbeat acked");
           state
       | Heartbeat _ ->
-          Heartbeat (Some (State.s state.st))
-          |> to_yojson |> send_json state.ws_conn;
+          Heartbeat (Some state.seq) |> to_yojson |> send_json state.ws_conn;
           state
       | Dispatch
           (VOICE_STATE_UPDATE
@@ -179,7 +179,7 @@ class t =
           `NoReply state
       | `Timeout `Heartbeat ->
           let clock = Eio.Stdenv.clock env in
-          send_heartbeat state.st state.ws_conn;
+          send_heartbeat state.seq state.ws_conn;
           Timeout.Process.start clock ~sw
             (Option.get state.heartbeat_interval)
             `Heartbeat self;
@@ -187,9 +187,11 @@ class t =
       | `WSText content -> (
           try
             let json = Yojson.Safe.from_string content in
-            (match extract_sequence_number json with
-            | Some s -> State.set_s state.st s
-            | None -> ());
+            let state =
+              match extract_sequence_number json with
+              | None -> state
+              | Some seq -> { state with seq }
+            in
             let ev = Event.of_yojson json in
             let state = self#handle_event env ~sw state ev in
             state.consumer#cast ev;

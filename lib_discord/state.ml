@@ -10,20 +10,13 @@ let empty_guild_data guild_id =
   { guild_id; voice_states = StringMap.empty; voice = None }
 
 type t = {
-  s : int Atomic.t;
   guild_data : (string (* guild id *), guild_data_t) Hashtbl.t With_mutex.t;
   me : User.t option Atomic.t;
 }
 
 let create () =
-  {
-    s = Atomic.make 0;
-    guild_data = Hashtbl.create 0 |> With_mutex.make;
-    me = Atomic.make None;
-  }
+  { guild_data = Hashtbl.create 0 |> With_mutex.make; me = Atomic.make None }
 
-let s { s; _ } = Atomic.get s
-let set_s { s; _ } = Atomic.set s
 let me { me; _ } = Atomic.get me
 let set_me { me; _ } = Atomic.set me
 
