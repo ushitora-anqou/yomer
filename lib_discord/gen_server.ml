@@ -107,24 +107,32 @@ let start_timeout clock ~sw timeout id (caster : _ #caster) =
 let start_ws_receiving ~sw conn (caster : _ #caster) =
   Eio.Fiber.fork ~sw @@ fun () ->
   let rec loop () =
-    let frame = Ws.read conn in
-    Logs.info (fun m -> m "Received (voice): %a" Websocket.Frame.pp frame);
-    match frame.opcode with
-    | Text ->
-        (try caster#cast (`WSText frame.content)
-         with e ->
-           Logs.err (fun m ->
-               m "Handling event failed (voice): %s: %s" (Printexc.to_string e)
-                 frame.content));
-        loop ()
-    | Close ->
-        let status_code = String.get_int16_be frame.content 0 in
-        Logs.warn (fun m ->
-            m "Websocket connection closed: code %d" status_code);
-        caster#cast (`WSClose status_code)
-    | _ ->
-        Logs.info (fun m ->
-            m "Received non-text frame (voice): %a" Websocket.Frame.pp frame);
-        loop ()
+    try
+      let frame = Ws.read conn in
+      Logs.info (fun m -> m "Ws received: %a" Websocket.Frame.pp frame);
+      match frame.opcode with
+      | Text ->
+          (try caster#cast (`WSText frame.content)
+           with e ->
+             Logs.err (fun m ->
+                 m "Ws handling event failed: %s: %s" (Printexc.to_string e)
+                   frame.content));
+          loop ()
+      | Close ->
+          let status_code = String.get_int16_be frame.content 0 in
+          Logs.warn (fun m ->
+              m "Websocket connection closed: code %d" status_code);
+          caster#cast (`WSClose status_code)
+      | _ ->
+          Logs.info (fun m ->
+              m "Received non-text ws frame: %a" Websocket.Frame.pp frame);
+          loop ()
+    with e ->
+      Logs.err (fun m -> m "Ws receiving failed: %s" (Printexc.to_string e));
+      caster#cast (`WSClose (-1))
   in
   loop ()
+
+let cast t msg = t#cast msg
+let call t msg = t#call msg
+let start t env ~sw args = t#start env ~sw args

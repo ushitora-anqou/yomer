@@ -56,13 +56,6 @@ let send_heartbeat clock conn =
   Voice_event.(Heartbeat nonce |> to_yojson) |> send_json conn;
   Logs.info (fun m -> m "Voice Heartbeat sent")
 
-let connect_ws env ~sw state =
-  let endpoint = (Option.get state.voice_server).endpoint in
-  let conn =
-    Ws.connect ~sw env ("https://" ^ endpoint ^ "/?v=4&encoding=json")
-  in
-  conn
-
 class t =
   object (self)
     inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
@@ -75,13 +68,20 @@ class t =
       Voice_udp_stream.close state.udp_stream;
       ()
 
+    method connect_ws env ~sw state =
+      let endpoint = (Option.get state.voice_server).endpoint in
+      let conn =
+        Ws.connect ~sw env ("https://" ^ endpoint ^ "/?v=4&encoding=json")
+      in
+      Gen_server.start_ws_receiving ~sw conn self;
+      conn
+
     method start_running env ~sw state =
       let token = (Option.get state.voice_server).token in
       let user_id = (Option.get state.voice_state).user_id in
       let session_id = (Option.get state.voice_state).session_id in
 
-      let conn = connect_ws env ~sw state in
-      Gen_server.start_ws_receiving ~sw conn self;
+      let conn = self#connect_ws env ~sw state in
 
       Voice_event.(
         Identify { server_id = state.guild_id; user_id; session_id; token }
@@ -162,7 +162,7 @@ class t =
       | `WSClose 4015 ->
           Logs.info (fun m ->
               m "Discord voice server crashed. Trying to resume.");
-          let ws_conn = connect_ws env ~sw state in
+          let ws_conn = self#connect_ws env ~sw state in
           let server_id = state.guild_id in
           let token = (Option.get state.voice_server).token in
           let session_id = (Option.get state.voice_state).session_id in
@@ -177,7 +177,7 @@ class t =
 
 let spawn _config env sw consumer_mailbox ~guild_id =
   let t = new t in
-  t#start env ~sw
+  Gen_server.start t env ~sw
     {
       guild_id;
       consumer =
