@@ -133,7 +133,7 @@ let start_sending_frames clock ~sw state caster =
 
       let end_time = Eio.Time.now clock in
       let diff = end_time -. start_time in
-      Gen_server.start_timeout clock ~sw
+      Timeout.Caster.start clock ~sw
         ((second_per_frame *. float_of_int (List.length heads)) -. diff)
         "" caster;
 

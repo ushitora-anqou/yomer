@@ -21,7 +21,7 @@ type voice_state = {
 type cast_msg =
   [ `VoiceStateUpdate of voice_state
   | `Timeout of [ `Heartbeat ]
-  | Gen_server.ws_cast_msg ]
+  | Ws.Caster.msg ]
 
 type state = {
   consumer : consumer_cast_msg Gen_server.caster;
@@ -53,7 +53,7 @@ class t =
     method connect_ws env ~sw =
       let endpoint = "https://gateway.discord.gg/?v=10&encoding=json" in
       let conn = Ws.connect ~sw env endpoint in
-      Gen_server.start_ws_receiving ~sw conn self;
+      Ws.Caster.start ~sw conn self;
       conn
 
     method resume_ws env ~sw state =
@@ -68,7 +68,7 @@ class t =
         Uri.to_string u
       in
       let conn = Ws.connect ~sw env url in
-      Gen_server.start_ws_receiving ~sw conn self;
+      Ws.Caster.start ~sw conn self;
 
       (* Send Resume event *)
       let seq = State.s state.st in
@@ -91,8 +91,8 @@ class t =
       | Hello { heartbeat_interval } ->
           let interval = float_of_int heartbeat_interval /. 1000.0 in
           if Option.is_none state.heartbeat_interval then
-            Gen_server.start_timeout (Eio.Stdenv.clock env) ~sw interval
-              `Heartbeat self;
+            Timeout.Caster.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
+              self;
 
           Identify
             {
@@ -176,7 +176,7 @@ class t =
       | `Timeout `Heartbeat ->
           let clock = Eio.Stdenv.clock env in
           send_heartbeat state.st state.ws_conn;
-          Gen_server.start_timeout clock ~sw
+          Timeout.Caster.start clock ~sw
             (Option.get state.heartbeat_interval)
             `Heartbeat self;
           `NoReply state

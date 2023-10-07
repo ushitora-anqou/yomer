@@ -17,7 +17,7 @@ type cast_msg =
   | `VoiceServer of voice_server
   | `Timeout of [ `Heartbeat ]
   | `Frame of string
-  | Gen_server.ws_cast_msg ]
+  | Ws.Caster.msg ]
 
 type process_status = WaitingParameters | Running
 
@@ -72,7 +72,7 @@ class t =
       let conn =
         Ws.connect ~sw env ("https://" ^ endpoint ^ "/?v=4&encoding=json")
       in
-      Gen_server.start_ws_receiving ~sw conn self;
+      Ws.Caster.start ~sw conn self;
       conn
 
     method start_running env ~sw state =
@@ -107,8 +107,8 @@ class t =
                don't maintain without this hack. *)
           in
           if Option.is_none state.heartbeat_interval then
-            Gen_server.start_timeout (Eio.Stdenv.clock env) ~sw interval
-              `Heartbeat self;
+            Timeout.Caster.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
+              self;
           { state with heartbeat_interval = Some interval }
       | Resumed | Heartbeat _ | HeartbeatAck _ ->
           (*
@@ -144,7 +144,7 @@ class t =
       | `Timeout `Heartbeat ->
           let clock = Eio.Stdenv.clock env in
           send_heartbeat clock (Option.get state.ws_conn);
-          Gen_server.start_timeout clock ~sw
+          Timeout.Caster.start clock ~sw
             (Option.get state.heartbeat_interval)
             `Heartbeat self;
           `NoReply state
