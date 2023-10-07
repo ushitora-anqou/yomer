@@ -111,8 +111,7 @@ let consume_event env state agent = function
 [@@warning "-11"]
 
 let () =
-  Logs.set_reporter (Logs_fmt.reporter ());
-  Logs.set_level (Some Logs.Info);
+  Logg.setup ();
 
   let token =
     match Sys.getenv_opt "DISCORD_TOKEN" with

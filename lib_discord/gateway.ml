@@ -175,7 +175,9 @@ class t =
               m "Discord voice server crashed. Trying to resume.");
           (* FIXME *)
           `Stop
-      | `WSClose _ -> `Stop
+      | `WSClose _ ->
+          Logs.info (fun m -> m "Gateway WS connection closed");
+          `Stop
   end
 
 let spawn config env sw state consumer_mailbox =

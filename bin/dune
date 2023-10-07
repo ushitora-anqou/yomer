@@ -11,8 +11,12 @@
   eio.unix
   eio_linux
   eio_main
+  fmt
   logs
+  mirage-clock-unix
   mirage-crypto-rng
   mirage-crypto-rng-eio
-  pcre)
+  pcre
+  ptime
+  yojson)
  (flags :standard -cclib -lopus))

@@ -169,7 +169,9 @@ class t =
           Voice_event.(Resume { server_id; session_id; token } |> to_yojson)
           |> send_json ws_conn;
           `NoReply { state with ws_conn = Some ws_conn }
-      | `WSClose _ -> `Stop
+      | `WSClose _ ->
+          Logs.info (fun m -> m "Voice gateway WS connection closed");
+          `Stop
       | `Frame frame ->
           Voice_udp_stream.send_frame state.udp_stream frame;
           `NoReply state
