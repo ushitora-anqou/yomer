@@ -18,7 +18,9 @@
   logs
   logs.fmt
   mirage-crypto-rng
+  mirage-clock-unix
   ocplib-endian
+  ptime
   sodium
   tls
   tls-eio

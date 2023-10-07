@@ -1,3 +1,5 @@
+open Util
+
 type stop_reason = ..
 type stop_reason += Normal | Exn of string
 
@@ -76,14 +78,22 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
       self#terminate env ~sw state reason;
       reason
 
-    method private supervise (env : Eio_unix.Stdenv.base) ~sw:(_ : Eio.Switch.t)
-        (args : 'init_arg) : unit =
-      (* FIXME: Add rate limit *)
-      let rec loop () =
+    method private supervise ?(max_restarts = 3) ?(max_seconds = 5.0)
+        (env : Eio_unix.Stdenv.base) ~sw:(_ : Eio.Switch.t) (args : 'init_arg)
+        : unit =
+      let rec loop restarts =
         let reason = Eio.Switch.run (fun sw -> self#run env ~sw args) in
-        match reason with Normal -> () | _ -> loop ()
+        match reason with
+        | Normal -> ()
+        | _ ->
+            (* Check if we have reached the maximum number of restarts *)
+            let restarts, _ =
+              List.take_at_most max_restarts (now () :: restarts)
+            in
+            let duration = List.hd restarts -. List.hd (List.rev restarts) in
+            if duration < max_seconds then () else loop restarts
       in
-      loop ()
+      loop []
 
     method start env ~sw (args : 'init_arg) =
       let already_running =

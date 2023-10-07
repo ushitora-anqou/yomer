@@ -24,3 +24,5 @@ module List = struct
     in
     aux n []
 end
+
+let now () = Ptime.to_float_s (Ptime.v (Pclock.now_d_ps ()))
