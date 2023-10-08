@@ -180,8 +180,9 @@ class t =
           `NoReply state
   end
 
-let spawn _config env sw consumer_mailbox ~guild_id =
-  let t = new t in
+let create () = new t
+
+let start t _config env sw consumer_mailbox ~guild_id =
   Gen_server.start t env ~sw
     {
       guild_id;
@@ -189,8 +190,7 @@ let spawn _config env sw consumer_mailbox ~guild_id =
         object
           method cast e = Mailbox.send consumer_mailbox e
         end;
-    };
-  t
+    }
 
 let attach_voice_state ~user_id ~session_id t =
   t#cast (`VoiceState { user_id; session_id })

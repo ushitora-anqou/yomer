@@ -70,6 +70,7 @@ class t =
         in
         Uri.to_string u
       in
+      Logs.info (fun m -> m "Resuming: %s" url);
       let conn = Ws.connect ~sw env url in
       Ws.Process.start ~sw conn self;
 
@@ -124,48 +125,32 @@ class t =
             { guild_id = Some guild_id; user_id; session_id; channel_id }) ->
           let self_user_id = State.me state.st |> Option.get in
           (if user_id = self_user_id.User.id then
-             let g = State.guild_data state.st guild_id |> Option.get in
-             match g.voice with
+             match State.voice state.st guild_id with
              | None -> ()
-             | Some (_, vgw) ->
-                 Voice_gateway.attach_voice_state ~user_id ~session_id vgw);
+             | Some { gateway; _ } ->
+                 Voice_gateway.attach_voice_state ~user_id ~session_id gateway);
 
-          State.update_guild_data state.st guild_id (fun data ->
-              (* Update data.voice_states *)
-              {
-                data with
-                voice_states =
-                  data.voice_states
-                  |> StringMap.add user_id
-                       (Voice_state.make ~guild_id:data.guild_id ?channel_id
-                          ~user_id ());
-              });
+          Voice_state.make ~guild_id ?channel_id ~user_id ()
+          |> State.set_voice_states state.st ~guild_id ~user_id;
 
           state
       | Dispatch (VOICE_SERVER_UPDATE { token; guild_id; endpoint }) ->
-          let g = State.guild_data state.st guild_id |> Option.get in
-          let vgw = Option.get g.voice |> snd in
-          Voice_gateway.attach_voice_server ~token ~endpoint vgw;
+          let v = State.voice state.st guild_id |> Option.get in
+          Voice_gateway.attach_voice_server ~token ~endpoint v.gateway;
           state
       | Dispatch (READY { user; resume_gateway_url; session_id; _ }) ->
-          State.set_me state.st (Some user);
+          State.set_me state.st user;
           { state with resume = Some (resume_gateway_url, session_id) }
       | Dispatch (GUILD_CREATE json) -> (
           match Guild.of_yojson json with
           | exception _ -> state
           | g ->
-              State.update_guild_data state.st g.id (fun data ->
-                  {
-                    data with
-                    guild_id = g.id;
-                    voice_states =
-                      g.voice_states
-                      |> Option.map (fun xs ->
-                             xs
-                             |> List.map (fun x -> (x.Voice_state.user_id, x))
-                             |> List.to_seq |> StringMap.of_seq)
-                      |> Option.value ~default:StringMap.empty;
-                  });
+              g.voice_states
+              |> Option.iter (fun xs ->
+                     xs
+                     |> List.iter (fun x ->
+                            State.set_voice_states state.st ~guild_id:g.id
+                              ~user_id:x.Voice_state.user_id x));
               state)
       | Reconnect | InvalidSession true -> self#resume_ws env ~sw state
       | Dispatch _ | VoiceStateUpdate _ | InvalidSession false -> state

@@ -26,3 +26,9 @@ module List = struct
 end
 
 let now () = Ptime.to_float_s (Ptime.v (Pclock.now_d_ps ()))
+
+module Option = struct
+  include Option
+
+  let flatten = function Some x -> x | None -> None
+end

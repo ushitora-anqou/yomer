@@ -91,7 +91,9 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
               List.take_at_most max_restarts (now () :: restarts)
             in
             let duration = List.hd restarts -. List.hd (List.rev restarts) in
-            if duration < max_seconds then () else loop restarts
+            if List.length restarts = max_restarts && duration < max_seconds
+            then ()
+            else loop restarts
       in
       loop []
 

@@ -66,9 +66,9 @@ let consume_event env state agent = function
       let guild_id = msg.guild_id in
       match parse_command msg.content with
       | [ (Some "!join", None) ] -> (
-          let m = Discord.Agent.get_voice_states ~guild_id agent in
           match
-            Discord.StringMap.find_opt Discord.Message.(msg.author.id) m
+            Discord.Agent.get_voice_states ~guild_id ~user_id:msg.author.id
+              agent
           with
           | None -> ()
           | Some vstate -> (
