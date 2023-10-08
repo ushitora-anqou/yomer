@@ -198,17 +198,9 @@ class t =
           `Stop (Restart, state)
   end
 
-let spawn config env sw state consumer_mailbox =
+let spawn config env sw state consumer =
   let t = new t in
-  Gen_server.start t env ~sw
-    {
-      config;
-      state;
-      consumer =
-        object
-          method cast e = Mailbox.send consumer_mailbox e
-        end;
-    };
+  Gen_server.start t env ~sw { config; state; consumer };
   t
 
 let send_voice_state_update ~guild_id ?channel_id ~self_mute ~self_deaf t =

@@ -8,6 +8,7 @@
   cstruct
   discord
   eio
+  eio.core
   eio.unix
   eio_linux
   eio_main

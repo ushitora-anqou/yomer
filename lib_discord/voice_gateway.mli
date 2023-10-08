@@ -1,4 +1,5 @@
 type t
+type consumer_cast_msg = Event.t
 
 val create : unit -> t
 
@@ -7,7 +8,7 @@ val start :
   Config.t ->
   Eio_unix.Stdenv.base ->
   Eio.Switch.t ->
-  Event.t Mailbox.t ->
+  consumer_cast_msg Gen_server.process ->
   guild_id:string ->
   unit
 

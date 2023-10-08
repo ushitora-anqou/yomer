@@ -182,15 +182,8 @@ class t =
 
 let create () = new t
 
-let start t _config env sw consumer_mailbox ~guild_id =
-  Gen_server.start t env ~sw
-    {
-      guild_id;
-      consumer =
-        object
-          method cast e = Mailbox.send consumer_mailbox e
-        end;
-    }
+let start t _config env sw consumer ~guild_id =
+  Gen_server.start t env ~sw { guild_id; consumer }
 
 let attach_voice_state ~user_id ~session_id t =
   t#cast (`VoiceState { user_id; session_id })
