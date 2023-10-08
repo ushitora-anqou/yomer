@@ -65,6 +65,7 @@ class t =
       let url =
         let u = Uri.of_string resume_gateway_url in
         let u = Uri.with_scheme u (Some "https") in
+        let u = Uri.with_path u "/" in
         let u =
           Uri.with_query u [ ("v", [ "10" ]); ("encoding", [ "json" ]) ]
         in
