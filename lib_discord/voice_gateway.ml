@@ -102,23 +102,12 @@ class t =
     method handle_voice_event env ~sw state =
       function
       | Voice_event.Hello { heartbeat_interval } ->
-          let interval = float_of_int heartbeat_interval /. 1000.0 in
-          let interval =
-            interval /. 2.0
-            (* FIXME: Although `/. 2.0` is not necessary in theory, ws and udp connections
-               don't maintain without this hack. *)
-          in
+          let interval = heartbeat_interval /. 1000.0 in
           if Option.is_none state.heartbeat_interval then
             Timeout.Process.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
               self;
           { state with heartbeat_interval = Some interval }
-      | Resumed | Heartbeat _ | HeartbeatAck _ ->
-          (*
-              FIXME: Although the Discord doc says that the server will return
-              HeartbeatAck (opcode 6) in response to Heartbeat (opcode 3) from its clients,
-              it seems to actually return Heartbeat.
-            *)
-          state
+      | Resumed | HeartbeatAck _ -> state
       | Ready { ip; port; ssrc; modes; _ } ->
           let ws_conn = Option.get state.ws_conn in
           Voice_udp_stream.connect env sw state.udp_stream
@@ -132,7 +121,7 @@ class t =
           Voice_udp_stream.attach_secret_key state.udp_stream secret_key;
           state.consumer#cast (Event.VoiceReady { guild_id = state.guild_id });
           state
-      | Identify _ | SelectProtocol _ | Speaking _ | Resume _ ->
+      | Identify _ | SelectProtocol _ | Speaking _ | Resume _ | Heartbeat _ ->
           failwith "Unexpected event"
 
     method! private handle_cast env ~sw state =

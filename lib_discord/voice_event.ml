@@ -1,12 +1,6 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
-type ready = {
-  ssrc : int;
-  ip : string;
-  port : int;
-  modes : string list;
-  heartbeat_interval : int;
-}
+type ready = { ssrc : int; ip : string; port : int; modes : string list }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
 type identify = {
@@ -29,7 +23,7 @@ type session_description = { mode : string; secret_key : int list }
 type speaking = { speaking : int; delay : int; ssrc : int }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
-type hello = { heartbeat_interval : int }
+type hello = { heartbeat_interval : float }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
 type resume = { server_id : string; session_id : string; token : string }
