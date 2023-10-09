@@ -38,6 +38,7 @@ module Config = Config
 module Consumer = Consumer
 module Event = Event
 module Intent = Intent
+module Object = Object
 module Rest = Rest
 module StringMap = Util.StringMap
 module Voice_state = Voice_state

@@ -66,8 +66,10 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
       | [ (Some "!ping", None) ] ->
           Logs.info (fun m -> m "ping");
           if
-            Discord.Rest.create_message env config msg.channel_id
-              { content = "pong" }
+            Discord.Rest.make_create_message_param
+              ~embeds:[ Discord.Object.make_embed ~description:"pong" () ]
+              ()
+            |> Discord.Rest.create_message env config msg.channel_id
             |> Result.is_error
           then Logs.err (fun m -> m "Failed to send pong");
           state

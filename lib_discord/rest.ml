@@ -33,7 +33,11 @@ let request ~meth ?body env config path =
 
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
-type create_message_param = { content : string } [@@deriving make, yojson]
+type create_message_param = {
+  content : string option;
+  embeds : Object.embed list option; [@yojson.option]
+}
+[@@deriving make, yojson]
 
 let create_message (env : Eio_unix.Stdenv.base) config channel_id p =
   match

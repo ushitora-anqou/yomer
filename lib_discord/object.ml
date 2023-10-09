@@ -5,6 +5,9 @@ open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 type user = { username : string; id : string }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
 
+type embed = { description : string option [@yojson.option] }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
+
 type message = {
   id : string;
   author : user;
@@ -18,5 +21,6 @@ type message = {
   webhook_id : string option; [@yojson.option]
   type_ : int; [@key "type"]
   guild_id : string option; [@yojson.option]
+  embeds : embed list option; [@yojson.option]
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
