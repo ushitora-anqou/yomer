@@ -24,6 +24,7 @@ type connection_param = {
 }
 
 val frame_size : int
+val num_burst_frames : int
 val create : unit -> t
 
 val connect :

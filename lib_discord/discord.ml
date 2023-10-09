@@ -45,3 +45,4 @@ module StringMap = Util.StringMap
 module Voice_state = Voice_state
 
 let voice_frame_size = Voice_udp_stream.frame_size
+let voice_num_burst_frames = Voice_udp_stream.num_burst_frames

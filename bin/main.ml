@@ -8,20 +8,36 @@ let parse_command s =
   |> List.map (fun a ->
          (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
 
+let read_at_most src buf =
+  let rec loop working_buf =
+    match Eio.Flow.single_read src working_buf with
+    | exception End_of_file -> `Last (Cstruct.sub buf 0 working_buf.off)
+    | got ->
+        let working_buf = Cstruct.shift working_buf got in
+        if Cstruct.length working_buf = 0 then `Full else loop working_buf
+  in
+  loop buf
+
 class frames_sink agent guild_id =
   object
     inherit Eio.Flow.sink
 
     method copy src =
-      let rec loop () =
-        let buf = Cstruct.create (Discord.voice_frame_size * 2 * 2 * 10) in
-        Eio.Flow.read_exact src buf;
-        agent
-        |> Discord.Agent.play_voice ~guild_id
-             ~src:(`PCM_S16LE (Cstruct.to_string buf));
-        loop ()
+      let open Discord in
+      let buf =
+        Cstruct.create (voice_frame_size * 2 * 2 * voice_num_burst_frames)
       in
-      try loop () with End_of_file -> ()
+      let rec loop () =
+        let buf, is_last =
+          match read_at_most src buf with
+          | `Full -> (buf, false)
+          | `Last buf -> (buf, true)
+        in
+        agent
+        |> Agent.play_voice ~guild_id ~src:(`PCM_S16LE (Cstruct.to_string buf));
+        if not is_last then loop ()
+      in
+      loop ()
   end
 
 let spawn_youtubedl process_mgr ~sw ~stdout url =
