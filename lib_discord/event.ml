@@ -3,7 +3,7 @@ open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
 type dispatch_ready = {
   v : int;
-  user : User.t;
+  user : Object.user;
   guilds : json_any;
   session_id : string;
   resume_gateway_url : string;
@@ -29,7 +29,7 @@ type dispatch_voice_state_update = {
 type dispatch =
   | READY of dispatch_ready
   | GUILD_CREATE of json_any
-  | MESSAGE_CREATE of Message.t
+  | MESSAGE_CREATE of Object.message
   | VOICE_STATE_UPDATE of dispatch_voice_state_update
   | VOICE_SERVER_UPDATE of dispatch_voice_server_update
 [@@deriving yojson, show]

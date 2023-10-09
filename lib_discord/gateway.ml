@@ -125,7 +125,7 @@ class t =
           (VOICE_STATE_UPDATE
             { guild_id = Some guild_id; user_id; session_id; channel_id }) ->
           let self_user_id = State.me state.st |> Option.get in
-          (if user_id = self_user_id.User.id then
+          (if user_id = self_user_id.id then
              match State.voice state.st guild_id with
              | None -> ()
              | Some { gateway; _ } ->

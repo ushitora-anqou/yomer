@@ -46,7 +46,7 @@ end
 
 module Me_kv = struct
   type key = unit
-  type value = User.t
+  type value = Object.user
 
   let compare () () = 0
 end

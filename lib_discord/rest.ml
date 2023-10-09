@@ -43,7 +43,7 @@ let create_message (env : Eio_unix.Stdenv.base) config channel_id p =
   with
   | code, Some body when Cohttp.Code.(code |> code_of_status |> is_success) ->
       Logs.info (fun m -> m "create_message: %s" (Yojson.Safe.to_string body));
-      Ok (Message.of_yojson body)
+      Ok (Object.message_of_yojson body)
   | code, body ->
       Error
         (Printf.sprintf "create_message: %s: %s"

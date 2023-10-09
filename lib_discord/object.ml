@@ -1,8 +1,13 @@
+[@@@warning "-30"]
+
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
-type t = {
+type user = { username : string; id : string }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
+
+type message = {
   id : string;
-  author : User.t;
+  author : user;
   channel_id : string;
   content : string;
   timestamp : string;
@@ -14,7 +19,4 @@ type t = {
   type_ : int; [@key "type"]
   guild_id : string option; [@yojson.option]
 }
-[@@yojson.allow_extra_fields] [@@deriving yojson, show]
-
-let of_yojson = t_of_yojson
-let to_yojson = yojson_of_t
+[@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
