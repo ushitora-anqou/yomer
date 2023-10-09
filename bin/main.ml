@@ -58,11 +58,19 @@ let make_noise env sw guild_id url agent =
   in
   ()
 
-let handle_event env ~sw agent state = function
+let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
   | Discord.Event.Dispatch (READY _) -> state
   | Dispatch (MESSAGE_CREATE msg) -> (
-      let guild_id = msg.guild_id in
+      let guild_id = Option.get msg.guild_id in
       match parse_command msg.content with
+      | [ (Some "!ping", None) ] ->
+          Logs.info (fun m -> m "ping");
+          if
+            Discord.Rest.create_message env config msg.channel_id
+              { content = "pong" }
+            |> Result.is_error
+          then Logs.err (fun m -> m "Failed to send pong");
+          state
       | [ (Some "!join", None) ] ->
           (match
              agent
@@ -106,6 +114,6 @@ let () =
   Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env @@ fun () ->
   Eio.Switch.run @@ fun sw ->
   let _consumer =
-    Discord.Consumer.start env ~sw config (fun () -> ()) handle_event
+    Discord.Consumer.start env ~sw config (fun () -> ()) (handle_event config)
   in
   ()

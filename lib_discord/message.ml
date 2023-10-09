@@ -12,7 +12,7 @@ type t = {
   pinned : bool;
   webhook_id : string option; [@yojson.option]
   type_ : int; [@key "type"]
-  guild_id : string;
+  guild_id : string option; [@yojson.option]
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 

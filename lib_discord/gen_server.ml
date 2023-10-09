@@ -54,7 +54,12 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
         | `Call (msg, reply_stream) -> (
             match self#handle_call env ~sw state msg with
             | exception e ->
-                let reason = Exn (Printexc.to_string e) in
+                let reason =
+                  Exn
+                    (Printf.sprintf "handle_call raised exception: %s\n%s"
+                       (Printexc.to_string e)
+                       (Printexc.get_backtrace ()))
+                in
                 (* NOTE: reply_stream will be dead locked *)
                 (reason, state)
             | `Reply (reply, state) ->
@@ -66,7 +71,12 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
         | `Cast msg -> (
             match self#handle_cast env ~sw state msg with
             | exception e ->
-                let reason = Exn (Printexc.to_string e) in
+                let reason =
+                  Exn
+                    (Printf.sprintf "handle_cast raised exception: %s\n%s"
+                       (Printexc.to_string e)
+                       (Printexc.get_backtrace ()))
+                in
                 (reason, state)
             | `NoReply state -> loop state
             | `Stop (reason, state) -> (reason, state))
@@ -79,13 +89,16 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
       reason
 
     method private supervise ?(max_restarts = 3) ?(max_seconds = 5.0)
-        (env : Eio_unix.Stdenv.base) ~sw:(_ : Eio.Switch.t) (args : 'init_arg)
+        (env : Eio_unix.Stdenv.base) ~(sw : Eio.Switch.t) (args : 'init_arg)
         : unit =
       let rec loop restarts =
-        let reason = Eio.Switch.run (fun sw -> self#run env ~sw args) in
+        let reason = self#run env ~sw args in
         match reason with
         | Normal -> ()
         | _ ->
+            Logs.warn (fun m ->
+                m "A gen server died: %s"
+                  (match reason with Exn s -> s | _ -> "unknown reason"));
             (* Check if we have reached the maximum number of restarts *)
             let restarts, _ =
               List.take_at_most max_restarts (now () :: restarts)
@@ -93,7 +106,9 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
             let duration = List.hd restarts -. List.hd (List.rev restarts) in
             if List.length restarts = max_restarts && duration < max_seconds
             then ()
-            else loop restarts
+            else (
+              Logs.warn (fun m -> m "Restarting a gen server");
+              loop restarts)
       in
       loop []
 

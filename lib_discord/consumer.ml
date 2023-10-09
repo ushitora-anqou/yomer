@@ -37,7 +37,11 @@ class ['user_state] t =
 
     method! private handle_cast env ~sw state event =
       let user_state =
-        state.user_handler env ~sw state.agent state.user_state event
+        try state.user_handler env ~sw state.agent state.user_state event
+        with e ->
+          Logs.err (fun m ->
+              m "User consumer failed: %s\n%s" (Printexc.to_string e)
+                (Printexc.get_backtrace ()))
       in
       `NoReply { state with user_state }
   end

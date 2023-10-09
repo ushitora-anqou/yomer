@@ -39,6 +39,7 @@ module Consumer = Consumer
 module Event = Event
 module Intent = Intent
 module Message = Message
+module Rest = Rest
 module StringMap = Util.StringMap
 module Voice_state = Voice_state
 

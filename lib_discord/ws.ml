@@ -193,7 +193,7 @@ let connect ?(random_string = Websocket.Rng.init ())
     | [] -> failwith "getaddrinfo failed"
     | addr :: _ -> addr
   in
-  let path = Uri.path url in
+  let path = Uri.path_and_query url in
 
   let nonce = Base64.encode_exn (random_string 16) in
   let flow, ic = connect' env sw addr host path nonce extra_headers in
