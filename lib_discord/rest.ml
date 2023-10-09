@@ -15,17 +15,8 @@ let request ~meth ?body env config path =
         (body |> Option.fold ~none:"" ~some:Yojson.Safe.to_string));
   let body = body |> Option.map (fun x -> `Fixed (Yojson.Safe.to_string x)) in
   Eio.Switch.run @@ fun sw ->
-  let resp = Https.request ~meth ~headers ?body env ~sw url in
-  let body =
-    let body = ref [] in
-    match
-      Cohttp_eio.Client.read_chunked resp (function
-        | Chunk { data; _ } -> body := data :: !body
-        | Last_chunk _ -> ())
-    with
-    | None -> Cohttp_eio.Client.read_fixed resp
-    | Some _ -> String.concat "" !body
-  in
+  let resp = Httpx.request ~meth ~headers ?body env ~sw url in
+  let body = Httpx.drain_resp_body resp in
   let body =
     try body |> Yojson.Safe.from_string |> Option.some with _ -> None
   in

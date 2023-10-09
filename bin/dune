@@ -5,6 +5,8 @@
   (pps ppx_deriving.make))
  (libraries
   yomer
+  cohttp
+  cohttp-eio
   cstruct
   discord
   eio

@@ -32,3 +32,9 @@ module Option = struct
 
   let flatten = function Some x -> x | None -> None
 end
+
+module Result = struct
+  include Result
+
+  let ( >>= ) = bind
+end

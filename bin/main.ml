@@ -1,5 +1,13 @@
 [@@@warning "-32-69"]
 
+let command_re = Regex.e {|^(\S+)(?:\s+(.*))?$|}
+
+let parse_command s =
+  let open Regex in
+  s |> match_ command_re
+  |> List.map (fun a ->
+         (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
+
 class frames_sink agent guild_id =
   object
     inherit Eio.Flow.sink
@@ -16,46 +24,62 @@ class frames_sink agent guild_id =
       try loop () with End_of_file -> ()
   end
 
-let command_re = Regex.e {|^(\S+)(?:\s+(.*))?$|}
+let spawn_youtubedl process_mgr ~sw ~stdout url =
+  let executable =
+    Sys.getenv_opt "YOUTUBEDL_PATH"
+    |> Option.value ~default:"/usr/bin/youtube-dl"
+  in
+  Eio.Process.spawn ~sw process_mgr ~stdout ~executable
+    [ executable; "-f"; "bestaudio"; "-o"; "-"; "-q"; "--no-warnings"; url ]
 
-let parse_command s =
-  let open Regex in
-  s |> match_ command_re
-  |> List.map (fun a ->
-         (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
+let spawn_ffmpeg process_mgr ~sw ~stdin ~stdout =
+  let executable =
+    Sys.getenv_opt "FFMPEG_PATH" |> Option.value ~default:"/usr/bin/ffmpeg"
+  in
+  Eio.Process.spawn ~sw process_mgr ~stdin ~stdout ~executable
+    [
+      executable;
+      "-i";
+      "pipe:0";
+      "-ac";
+      "2";
+      "-ar";
+      "48000";
+      "-f";
+      "s16le";
+      "-loglevel";
+      "quiet";
+      "pipe:1";
+    ]
 
-let make_noise env sw guild_id url agent =
+let play_url env sw guild_id url agent =
   let process_mgr = Eio.Stdenv.process_mgr env in
   let src, sink = Eio.Process.pipe ~sw process_mgr in
   let final_sink = new frames_sink agent guild_id in
-  let _p1 =
-    let executable =
-      Sys.getenv_opt "YOUTUBEDL_PATH"
-      |> Option.value ~default:"/usr/bin/youtube-dl"
-    in
-    Eio.Process.spawn ~sw process_mgr ~stdout:sink ~executable
-      [ executable; "-f"; "bestaudio"; "-o"; "-"; "-q"; "--no-warnings"; url ]
+  let _p1 = spawn_youtubedl process_mgr ~sw ~stdout:sink url in
+  let _p2 = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:final_sink in
+  ()
+
+let query_voice_provider env config text =
+  Eio.Switch.run @@ fun sw ->
+  let resp =
+    Discord.Httpx.post env ~sw ~body:(`Fixed text)
+      config.Discord.Config.voice_provider_endpoint
   in
-  let _p2 =
-    let executable =
-      Sys.getenv_opt "FFMPEG_PATH" |> Option.value ~default:"/usr/bin/ffmpeg"
-    in
-    Eio.Process.spawn ~sw process_mgr ~stdin:src ~stdout:final_sink ~executable
-      [
-        executable;
-        "-i";
-        "pipe:0";
-        "-ac";
-        "2";
-        "-ar";
-        "48000";
-        "-f";
-        "s16le";
-        "-loglevel";
-        "quiet";
-        "pipe:1";
-      ]
-  in
+  let status = fst resp |> Http.Response.status in
+  if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
+    Cohttp_eio.Client.read_fixed resp
+  else
+    failwith
+      (Printf.sprintf "Failed to get speech: %s"
+         (Cohttp.Code.string_of_status status))
+
+let start_speech env ~sw config ~text ~guild_id agent =
+  let wav = query_voice_provider env config text in
+  let src = Eio.Flow.string_source wav in
+  let process_mgr = Eio.Stdenv.process_mgr env in
+  let final_sink = new frames_sink agent guild_id in
+  let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:final_sink in
   ()
 
 let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
@@ -90,9 +114,15 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
           state
       | [ (Some "!play", Some url) ] ->
           Logs.info (fun m -> m "Playing %s" url);
-          make_noise env sw guild_id url agent;
+          play_url env sw guild_id url agent;
           state
-      | _ -> state)
+      | _ ->
+          (try start_speech env ~sw config ~text:msg.content ~guild_id agent
+           with e ->
+             Logs.err (fun m ->
+                 m "Failed to start speech: %s\n%s" (Printexc.to_string e)
+                   (Printexc.get_backtrace ())));
+          state)
   | VoiceReady { guild_id; _ } ->
       Logs.info (fun m -> m "Voice ready for guild %s" guild_id);
       state
@@ -110,7 +140,8 @@ let () =
     Discord.Intent.encode
       [ GUILDS; GUILD_VOICE_STATES; GUILD_MESSAGES; MESSAGE_CONTENT ]
   in
-  let config = Discord.Config.make ~token ~intents in
+  let voice_provider_endpoint = "http://localhost:8400" in
+  let config = Discord.Config.make ~token ~intents ~voice_provider_endpoint in
 
   Eio_main.run @@ fun env ->
   Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env @@ fun () ->

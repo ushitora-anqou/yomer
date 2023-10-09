@@ -37,6 +37,7 @@ module Agent = Agent
 module Config = Config
 module Consumer = Consumer
 module Event = Event
+module Httpx = Httpx
 module Intent = Intent
 module Object = Object
 module Rest = Rest
