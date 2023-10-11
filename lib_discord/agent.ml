@@ -95,7 +95,47 @@ let get_voice_states ~guild_id ~user_id agent =
   match Gen_server.call agent (`GetVoiceStates { guild_id; user_id }) with
   | `GetVoiceStates v -> v
 
-let play_voice :
-    guild_id:string -> src:[> `FrameSource of Eio.Flow.source ] -> t -> unit =
- fun ~guild_id ~src agent ->
-  Gen_server.cast agent (`PlayVoice { guild_id; src })
+let spawn_youtubedl process_mgr ~sw ~stdout url =
+  let executable =
+    Sys.getenv_opt "YOUTUBEDL_PATH"
+    |> Option.value ~default:"/usr/bin/youtube-dl"
+  in
+  Eio.Process.spawn ~sw process_mgr ~stdout ~executable
+    [ executable; "-f"; "bestaudio"; "-o"; "-"; "-q"; "--no-warnings"; url ]
+
+let spawn_ffmpeg process_mgr ~sw ~stdin ~stdout =
+  let executable =
+    Sys.getenv_opt "FFMPEG_PATH" |> Option.value ~default:"/usr/bin/ffmpeg"
+  in
+  Eio.Process.spawn ~sw process_mgr ~stdin ~stdout ~executable
+    [
+      executable;
+      "-i";
+      "pipe:0";
+      "-ac";
+      "2";
+      "-ar";
+      "48000";
+      "-f";
+      "s16le";
+      "-loglevel";
+      "quiet";
+      "pipe:1";
+    ]
+
+let play_voice process_mgr ~sw ~guild_id ~src agent =
+  let play src =
+    let src', sink' = Eio.Process.pipe ~sw process_mgr in
+    let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
+    Eio.Flow.close sink';
+    Gen_server.cast agent
+      (`PlayVoice { guild_id; src = `FrameSource (src' :> Eio.Flow.source) })
+  in
+  match src with
+  | `Pipe (src : Eio.Flow.source) -> play src
+  | `Ytdl url ->
+      let src, sink = Eio.Process.pipe ~sw process_mgr in
+      let _p1 = spawn_youtubedl process_mgr ~sw ~stdout:sink url in
+      play src;
+      Eio.Flow.close src;
+      Eio.Flow.close sink

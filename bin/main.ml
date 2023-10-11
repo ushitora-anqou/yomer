@@ -8,48 +8,6 @@ let parse_command s =
   |> List.map (fun a ->
          (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
 
-let spawn_youtubedl process_mgr ~sw ~stdout url =
-  let executable =
-    Sys.getenv_opt "YOUTUBEDL_PATH"
-    |> Option.value ~default:"/usr/bin/youtube-dl"
-  in
-  Eio.Process.spawn ~sw process_mgr ~stdout ~executable
-    [ executable; "-f"; "bestaudio"; "-o"; "-"; "-q"; "--no-warnings"; url ]
-
-let spawn_ffmpeg process_mgr ~sw ~stdin ~stdout =
-  let executable =
-    Sys.getenv_opt "FFMPEG_PATH" |> Option.value ~default:"/usr/bin/ffmpeg"
-  in
-  Eio.Process.spawn ~sw process_mgr ~stdin ~stdout ~executable
-    [
-      executable;
-      "-i";
-      "pipe:0";
-      "-ac";
-      "2";
-      "-ar";
-      "48000";
-      "-f";
-      "s16le";
-      "-loglevel";
-      "quiet";
-      "pipe:1";
-    ]
-
-let play_url env sw guild_id url agent =
-  let process_mgr = Eio.Stdenv.process_mgr env in
-  let src, sink = Eio.Process.pipe ~sw process_mgr in
-  let src', sink' = Eio.Process.pipe ~sw process_mgr in
-  let _p1 = spawn_youtubedl process_mgr ~sw ~stdout:sink url in
-  let _p2 = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
-  Eio.Flow.close src;
-  Eio.Flow.close sink;
-  Eio.Flow.close sink';
-  Discord.Agent.play_voice ~guild_id
-    ~src:(`FrameSource (src' :> Eio.Flow.source))
-    agent;
-  ()
-
 let query_voice_provider env config text =
   Eio.Switch.run @@ fun sw ->
   let resp =
@@ -63,18 +21,6 @@ let query_voice_provider env config text =
     failwith
       (Printf.sprintf "Failed to get speech: %s"
          (Cohttp.Code.string_of_status status))
-
-let start_speech env ~sw config ~text ~guild_id agent =
-  let wav = query_voice_provider env config text in
-  let src = Eio.Flow.string_source wav in
-  let process_mgr = Eio.Stdenv.process_mgr env in
-  let src', sink' = Eio.Process.pipe ~sw process_mgr in
-  let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
-  Discord.Agent.play_voice ~guild_id
-    ~src:(`FrameSource (src' :> Eio.Flow.source))
-    agent;
-  Eio.Flow.close sink';
-  ()
 
 let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
   | Discord.Event.Dispatch (READY _) -> state
@@ -108,10 +54,19 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
           state
       | [ (Some "!play", Some url) ] ->
           Logs.info (fun m -> m "Playing %s" url);
-          play_url env sw guild_id url agent;
+          agent
+          |> Discord.Agent.play_voice
+               (Eio.Stdenv.process_mgr env)
+               ~sw ~guild_id ~src:(`Ytdl url);
           state
       | _ ->
-          (try start_speech env ~sw config ~text:msg.content ~guild_id agent
+          (try
+             let wav = query_voice_provider env config msg.content in
+             let src = Eio.Flow.string_source wav in
+             agent
+             |> Discord.Agent.play_voice
+                  (Eio.Stdenv.process_mgr env)
+                  ~sw ~guild_id ~src:(`Pipe src)
            with e ->
              Logs.err (fun m ->
                  m "Failed to start speech: %s\n%s" (Printexc.to_string e)
