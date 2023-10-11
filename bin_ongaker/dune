@@ -1,18 +1,13 @@
 (executable
- (public_name yomer)
+ (public_name ongaker)
  (name main)
  (preprocess
   (pps ppx_deriving.make))
  (libraries
-  yomer
-  cohttp
-  cohttp-eio
-  cstruct
   discord
   eio
   eio.core
   eio.unix
-  eio_linux
   eio_main
   fmt
   logs

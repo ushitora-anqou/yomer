@@ -8,20 +8,6 @@ let parse_command s =
   |> List.map (fun a ->
          (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
 
-let query_voice_provider env config text =
-  Eio.Switch.run @@ fun sw ->
-  let resp =
-    Discord.Httpx.post env ~sw ~body:(`Fixed text)
-      config.Discord.Config.voice_provider_endpoint
-  in
-  let status = fst resp |> Http.Response.status in
-  if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
-    Cohttp_eio.Client.read_fixed resp
-  else
-    failwith
-      (Printf.sprintf "Failed to get speech: %s"
-         (Cohttp.Code.string_of_status status))
-
 let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
   | Discord.Event.Dispatch (READY _) -> state
   | Dispatch (MESSAGE_CREATE msg) -> (
@@ -59,19 +45,7 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
                (Eio.Stdenv.process_mgr env)
                ~sw ~guild_id ~src:(`Ytdl url);
           state
-      | _ ->
-          (try
-             let wav = query_voice_provider env config msg.content in
-             let src = Eio.Flow.string_source wav in
-             agent
-             |> Discord.Agent.play_voice
-                  (Eio.Stdenv.process_mgr env)
-                  ~sw ~guild_id ~src:(`Pipe src)
-           with e ->
-             Logs.err (fun m ->
-                 m "Failed to start speech: %s\n%s" (Printexc.to_string e)
-                   (Printexc.get_backtrace ())));
-          state)
+      | _ -> state)
   | VoiceReady { guild_id; _ } ->
       Logs.info (fun m -> m "Voice ready for guild %s" guild_id);
       state
@@ -89,8 +63,7 @@ let () =
     Discord.Intent.encode
       [ GUILDS; GUILD_VOICE_STATES; GUILD_MESSAGES; MESSAGE_CONTENT ]
   in
-  let voice_provider_endpoint = "http://localhost:8400" in
-  let config = Discord.Config.make ~token ~intents ~voice_provider_endpoint in
+  let config = Discord.Config.make ~token ~intents in
 
   Eio_main.run @@ fun env ->
   Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env @@ fun () ->
