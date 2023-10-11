@@ -8,38 +8,6 @@ let parse_command s =
   |> List.map (fun a ->
          (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
 
-let read_at_most src buf =
-  let rec loop working_buf =
-    match Eio.Flow.single_read src working_buf with
-    | exception End_of_file -> `Last (Cstruct.sub buf 0 working_buf.off)
-    | got ->
-        let working_buf = Cstruct.shift working_buf got in
-        if Cstruct.length working_buf = 0 then `Full else loop working_buf
-  in
-  loop buf
-
-class frames_sink agent guild_id =
-  object
-    inherit Eio.Flow.sink
-
-    method copy src =
-      let open Discord in
-      let buf =
-        Cstruct.create (voice_frame_size * 2 * 2 * voice_num_burst_frames)
-      in
-      let rec loop () =
-        let buf, is_last =
-          match read_at_most src buf with
-          | `Full -> (buf, false)
-          | `Last buf -> (buf, true)
-        in
-        agent
-        |> Agent.play_voice ~guild_id ~src:(`PCM_S16LE (Cstruct.to_string buf));
-        if not is_last then loop ()
-      in
-      loop ()
-  end
-
 let spawn_youtubedl process_mgr ~sw ~stdout url =
   let executable =
     Sys.getenv_opt "YOUTUBEDL_PATH"
@@ -71,9 +39,15 @@ let spawn_ffmpeg process_mgr ~sw ~stdin ~stdout =
 let play_url env sw guild_id url agent =
   let process_mgr = Eio.Stdenv.process_mgr env in
   let src, sink = Eio.Process.pipe ~sw process_mgr in
-  let final_sink = new frames_sink agent guild_id in
+  let src', sink' = Eio.Process.pipe ~sw process_mgr in
   let _p1 = spawn_youtubedl process_mgr ~sw ~stdout:sink url in
-  let _p2 = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:final_sink in
+  let _p2 = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
+  Eio.Flow.close src;
+  Eio.Flow.close sink;
+  Eio.Flow.close sink';
+  Discord.Agent.play_voice ~guild_id
+    ~src:(`FrameSource (src' :> Eio.Flow.source))
+    agent;
   ()
 
 let query_voice_provider env config text =
@@ -94,8 +68,12 @@ let start_speech env ~sw config ~text ~guild_id agent =
   let wav = query_voice_provider env config text in
   let src = Eio.Flow.string_source wav in
   let process_mgr = Eio.Stdenv.process_mgr env in
-  let final_sink = new frames_sink agent guild_id in
-  let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:final_sink in
+  let src', sink' = Eio.Process.pipe ~sw process_mgr in
+  let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
+  Discord.Agent.play_voice ~guild_id
+    ~src:(`FrameSource (src' :> Eio.Flow.source))
+    agent;
+  Eio.Flow.close sink';
   ()
 
 let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function

@@ -38,3 +38,5 @@ module Result = struct
 
   let ( >>= ) = bind
 end
+
+let iota n = List.init n Fun.id

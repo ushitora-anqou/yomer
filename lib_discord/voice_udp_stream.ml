@@ -29,19 +29,21 @@ type call_msg = [ `DiscoverIP ]
 type call_reply = [ `DiscoverIP of string (* ip *) * int (* port *) ]
 
 type cast_msg =
-  [ `SecretKey of int list | `Frame of string | `Timeout of string ]
+  [ `SecretKey of int list
+  | `FrameSource of Eio.Flow.source
+  | `Timeout of string ]
 
 type state = {
   socket : Eio.Net.datagram_socket;
   dst : Eio.Net.Sockaddr.datagram;
   ssrc : int;
   secret_key : Sodium.secret Sodium.Secret_box.key option;
-  frames : string list (* reversed order *);
-  speaking : bool; [@default false]
   vgw : vgw_cast_msg Gen_server.process;
   seq_num : int;
   timestamp : int;
   opus_encoder : Opus.Encoder.t;
+  queued_sources : Eio.Flow.source list (* reversed order *);
+  speaking_source : Eio.Flow.source option;
 }
 [@@deriving make]
 
@@ -108,36 +110,79 @@ let send_frame state frame =
     timestamp = state.timestamp + frame_size;
   }
 
-let start_sending_frames clock ~sw state caster =
+let read_at_most src buf =
+  let rec loop working_buf =
+    match Eio.Flow.single_read src working_buf with
+    | exception End_of_file -> `Last (Cstruct.sub buf 0 working_buf.off)
+    | got ->
+        let working_buf = Cstruct.shift working_buf got in
+        if Cstruct.length working_buf = 0 then `Full else loop working_buf
+  in
+  loop buf
+
+let start_sending_frames_from_source clock ~sw state self =
   let start_time = Eio.Time.now clock in
 
-  match state.frames |> List.rev |> List.take_at_most num_burst_frames with
-  | [], _ ->
-      let state =
-        five_silent_frames
-        |> List.fold_left
-             (fun state opus -> send_frame state (`Opus opus))
-             state
-      in
-      send_speaking state false;
-      { state with speaking = false }
-  | heads, rest ->
-      if not state.speaking then send_speaking state true;
+  (* Choose correct speaking source *)
+  let state =
+    match state.speaking_source with
+    | Some _ -> state
+    | None -> (
+        match List.rev state.queued_sources with
+        | [] -> state
+        | x :: xs ->
+            send_speaking state true;
+            {
+              state with
+              speaking_source = Some x;
+              queued_sources = List.rev xs;
+            })
+  in
 
+  match state.speaking_source with
+  | None -> state
+  | Some src ->
+      (* Get frames from the source *)
+      let frame_len = frame_size * 2 * 2 in
+      let buf = Cstruct.create (frame_len * num_burst_frames) in
+      let buf, source_alive =
+        match read_at_most src buf with
+        | `Full -> (buf, true)
+        | `Last buf -> (buf, false)
+      in
+      let frames =
+        List.init
+          (Cstruct.length buf / frame_len)
+          (fun i ->
+            Cstruct.sub buf (i * frame_len) frame_len |> Cstruct.to_string)
+      in
+
+      (* Send the frames *)
       let state =
-        heads
+        frames
         |> List.fold_left
              (fun state frame -> send_frame state (`PCM_S16LE frame))
              state
       in
 
+      (* Sleep while sending *)
       let end_time = Eio.Time.now clock in
       let diff = end_time -. start_time in
       Timeout.Process.start clock ~sw
-        ((second_per_frame *. float_of_int (List.length heads)) -. diff)
-        "" caster;
+        ((second_per_frame *. float_of_int (List.length frames)) -. diff)
+        "" self;
 
-      { state with speaking = true; frames = List.rev rest }
+      if source_alive then state
+      else
+        (* Send silence frames *)
+        let state =
+          five_silent_frames
+          |> List.fold_left
+               (fun state opus -> send_frame state (`Opus opus))
+               state
+        in
+        send_speaking state false;
+        { state with speaking_source = None }
 
 class t =
   object (self)
@@ -177,17 +222,23 @@ class t =
             |> Sodium.Secret_box.Bytes.to_key |> Option.some
           in
           `NoReply { state with secret_key }
-      | `Frame _ when Option.is_none state.secret_key -> `NoReply state
-      | `Frame frame ->
-          let state = { state with frames = frame :: state.frames } in
+      | `FrameSource _ when Option.is_none state.secret_key -> `NoReply state
+      | `FrameSource src -> (
           let state =
-            if state.speaking then state
-            else start_sending_frames (Eio.Stdenv.clock env) ~sw state self
+            { state with queued_sources = src :: state.queued_sources }
           in
-          `NoReply state
+          match state.speaking_source with
+          | Some _ -> `NoReply state
+          | None ->
+              let state =
+                start_sending_frames_from_source (Eio.Stdenv.clock env) ~sw
+                  state self
+              in
+              `NoReply state)
       | `Timeout _ ->
           let state =
-            start_sending_frames (Eio.Stdenv.clock env) ~sw state self
+            start_sending_frames_from_source (Eio.Stdenv.clock env) ~sw state
+              self
           in
           `NoReply state
   end
@@ -219,7 +270,7 @@ let connect env sw t { vgw_conn; ip; port; ssrc; _ } =
         end;
     }
 
-let send_frame t frame = t#cast (`Frame frame)
+let send_frame_source t src = t#cast (`FrameSource src)
 let attach_secret_key t key = t#cast (`SecretKey key)
 let close t = t#stop
 let discover_ip (t : t) = match t#call `DiscoverIP with `DiscoverIP r -> r

@@ -16,7 +16,7 @@ type cast_msg =
   [ `VoiceState of voice_state
   | `VoiceServer of voice_server
   | `Timeout of [ `Heartbeat ]
-  | `Frame of string
+  | `FrameSource of Eio.Flow.source
   | Ws.Process.msg ]
 
 type process_status = WaitingParameters | Running
@@ -164,8 +164,8 @@ class t =
           `Stop
             ( (if reason = `Status_code 4014 then Gen_server.Normal else Restart),
               state )
-      | `Frame frame ->
-          Voice_udp_stream.send_frame state.udp_stream frame;
+      | `FrameSource src ->
+          Voice_udp_stream.send_frame_source state.udp_stream src;
           `NoReply state
   end
 
@@ -180,4 +180,4 @@ let attach_voice_state ~user_id ~session_id t =
 let attach_voice_server ~token ~endpoint t =
   t#cast (`VoiceServer { token; endpoint })
 
-let send_frame t frame = t#cast (`Frame frame)
+let send_frame_source t src = t#cast (`FrameSource src)

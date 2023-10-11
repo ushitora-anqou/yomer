@@ -1,5 +1,3 @@
-open Util
-
 type join_channel = {
   self_mute : bool;
   self_deaf : bool;
@@ -8,7 +6,12 @@ type join_channel = {
 }
 
 type leave_channel = { guild_id : string }
-type play_voice = { guild_id : string; src : [ `PCM_S16LE of string ] }
+
+type play_voice = {
+  guild_id : string;
+  src : [ `FrameSource of Eio.Flow.source ];
+}
+
 type get_voice_states = { guild_id : string; user_id : string }
 type init_arg = { config : Config.t; consumer : Event.t Gen_server.process }
 type call_msg = [ `GetVoiceStates of get_voice_states ]
@@ -68,16 +71,8 @@ class t =
           | None -> failwith "VoiceGateway is not available"
           | Some { gateway; _ } -> (
               match src with
-              | `PCM_S16LE data ->
-                  let buf_len = Voice_udp_stream.frame_size * 2 * 2 in
-                  let frames =
-                    List.init
-                      (String.length data / buf_len)
-                      (fun i -> String.sub data (i * buf_len) buf_len)
-                  in
-                  frames
-                  |> List.iter (fun frame ->
-                         Voice_gateway.send_frame gateway frame);
+              | `FrameSource src ->
+                  Voice_gateway.send_frame_source gateway src;
                   `NoReply state))
 
     method! private handle_call _env ~sw:_ state =
@@ -100,6 +95,7 @@ let get_voice_states ~guild_id ~user_id agent =
   match Gen_server.call agent (`GetVoiceStates { guild_id; user_id }) with
   | `GetVoiceStates v -> v
 
-let play_voice : guild_id:string -> src:[> `PCM_S16LE of string ] -> t -> unit =
+let play_voice :
+    guild_id:string -> src:[> `FrameSource of Eio.Flow.source ] -> t -> unit =
  fun ~guild_id ~src agent ->
   Gen_server.cast agent (`PlayVoice { guild_id; src })
