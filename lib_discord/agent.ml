@@ -66,14 +66,13 @@ class t =
             ~self_deaf:false gw;
           State.unset_voice st ~guild_id;
           `NoReply state
-      | `PlayVoice { guild_id; src } -> (
-          match State.voice st guild_id with
-          | None -> failwith "VoiceGateway is not available"
+      | `PlayVoice { guild_id; src } ->
+          (match State.voice st guild_id with
+          | None -> Logs.warn (fun m -> m "VoiceGateway is not available")
           | Some { gateway; _ } -> (
               match src with
-              | `FrameSource src ->
-                  Voice_gateway.send_frame_source gateway src;
-                  `NoReply state))
+              | `FrameSource src -> Voice_gateway.send_frame_source gateway src));
+          `NoReply state
 
     method! private handle_call _env ~sw:_ state =
       function
