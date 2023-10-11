@@ -1,0 +1,22 @@
+(executable
+ (public_name yomer)
+ (name main)
+ (preprocess
+  (pps ppx_deriving.make))
+ (libraries
+  cohttp
+  cohttp-eio
+  discord
+  eio
+  eio.core
+  eio.unix
+  eio_main
+  fmt
+  logs
+  mirage-clock-unix
+  mirage-crypto-rng
+  mirage-crypto-rng-eio
+  pcre
+  ptime
+  yojson)
+ (flags :standard -cclib -lopus))
