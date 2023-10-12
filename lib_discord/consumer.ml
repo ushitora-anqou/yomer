@@ -41,7 +41,8 @@ class ['user_state] t =
         with e ->
           Logs.err (fun m ->
               m "User consumer failed: %s\n%s" (Printexc.to_string e)
-                (Printexc.get_backtrace ()))
+                (Printexc.get_backtrace ()));
+          state.user_state
       in
       `NoReply { state with user_state }
   end

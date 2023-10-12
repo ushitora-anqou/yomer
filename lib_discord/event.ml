@@ -54,6 +54,7 @@ type t =
   | (* 10 *) Hello of { heartbeat_interval : int }
   | (* 11 *) HeartbeatAck
   | (* custom *) VoiceReady of { guild_id : string }
+  | (* custom *) VoiceSpeaking of { guild_id : string; speaking : bool }
 [@@deriving show]
 
 let of_yojson json =

@@ -155,7 +155,8 @@ class t =
               state)
       | Reconnect | InvalidSession true -> self#resume_ws env ~sw state
       | Dispatch _ | VoiceStateUpdate _ | InvalidSession false -> state
-      | VoiceReady _ | Identify _ | Resume _ -> failwith "Unexpected event"
+      | Identify _ | Resume _ | VoiceReady _ | VoiceSpeaking _ ->
+          failwith "Unexpected event"
 
     method! private handle_cast env ~sw state =
       function

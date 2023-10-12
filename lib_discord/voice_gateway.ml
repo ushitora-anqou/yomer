@@ -182,6 +182,8 @@ class t =
             Speaking { speaking = (if speaking then 1 else 0); delay = 0; ssrc }
             |> to_yojson)
           |> send_json (Option.get state.ws_conn);
+          state.consumer#cast
+            (Event.VoiceSpeaking { guild_id = state.guild_id; speaking });
           `NoReply state
   end
 
