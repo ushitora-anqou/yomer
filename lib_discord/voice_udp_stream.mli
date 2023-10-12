@@ -1,7 +1,8 @@
 type t
+type vgw_cast_msg = [ `Speaking of int (* ssrc *) * bool (* speaking *) ]
 
 type connection_param = {
-  vgw_conn : Ws.conn;
+  vgw : vgw_cast_msg Gen_server.process;
   ip : string;
   port : int;
   ssrc : int;

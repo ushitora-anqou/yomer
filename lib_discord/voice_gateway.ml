@@ -17,6 +17,7 @@ type cast_msg =
   | `VoiceServer of voice_server
   | `Timeout of [ `Heartbeat ]
   | `FrameSource of Eio.Flow.source
+  | `Speaking of int (* ssrc *) * bool (* speaking *)
   | Ws.Process.msg ]
 
 type process_status = WaitingParameters | Running
@@ -109,12 +110,15 @@ class t =
           { state with heartbeat_interval = Some interval }
       | Resumed | HeartbeatAck _ -> state
       | Ready { ip; port; ssrc; modes; _ } ->
-          let ws_conn = Option.get state.ws_conn in
+          let vgw =
+            (self :> Voice_udp_stream.vgw_cast_msg Gen_server.process)
+          in
           Voice_udp_stream.connect env sw state.udp_stream
-            { vgw_conn = ws_conn; ip; port; ssrc; modes };
+            { vgw; ip; port; ssrc; modes };
           let my_addr, my_port =
             Voice_udp_stream.discover_ip state.udp_stream
           in
+          let ws_conn = Option.get state.ws_conn in
           send_select_protocol ws_conn my_addr my_port modes;
           state
       | SessionDescription { secret_key; _ } ->
@@ -166,6 +170,18 @@ class t =
               state )
       | `FrameSource src ->
           Voice_udp_stream.send_frame_source state.udp_stream src;
+          `NoReply state
+      | `Speaking (ssrc, speaking) ->
+          let send_json conn json =
+            let content = Yojson.Safe.to_string json in
+            Logs.info (fun m -> m "Sending: %s" content);
+            Ws.write conn
+              Websocket.Frame.(create ~opcode:Opcode.Text ~content ())
+          in
+          Voice_event.(
+            Speaking { speaking = (if speaking then 1 else 0); delay = 0; ssrc }
+            |> to_yojson)
+          |> send_json (Option.get state.ws_conn);
           `NoReply state
   end
 

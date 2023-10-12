@@ -8,15 +8,15 @@ let application = Opus.Voip
 let num_burst_frames = 10
 let five_silent_frames = List.init 5 (fun _ -> "\xf8\xff\xfe")
 
+type vgw_cast_msg = [ `Speaking of int (* ssrc *) * bool (* speaking *) ]
+
 type connection_param = {
-  vgw_conn : Ws.conn;
+  vgw : vgw_cast_msg Gen_server.process;
   ip : string;
   port : int;
   ssrc : int;
   modes : string list;
 }
-
-type vgw_cast_msg = [ `Speaking of int (* ssrc *) * bool (* speaking *) ]
 
 type init_arg = {
   ip : string;
@@ -245,30 +245,8 @@ class t =
 
 let create () = new t
 
-let connect env sw t { vgw_conn; ip; port; ssrc; _ } =
-  t#start env ~sw
-    {
-      ip;
-      port;
-      ssrc;
-      vgw =
-        object
-          method cast =
-            function
-            | `Speaking (ssrc, speaking) ->
-                let send_json conn json =
-                  let content = Yojson.Safe.to_string json in
-                  Logs.info (fun m -> m "Sending: %s" content);
-                  Ws.write conn
-                    Websocket.Frame.(create ~opcode:Opcode.Text ~content ())
-                in
-                Voice_event.(
-                  Speaking
-                    { speaking = (if speaking then 1 else 0); delay = 0; ssrc }
-                  |> to_yojson)
-                |> send_json vgw_conn
-        end;
-    }
+let connect env sw (t : t) ({ vgw; ip; port; ssrc; _ } : connection_param) =
+  t#start env ~sw { ip; port; ssrc; vgw }
 
 let send_frame_source t src = t#cast (`FrameSource src)
 let attach_secret_key t key = t#cast (`SecretKey key)
