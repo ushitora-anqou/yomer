@@ -6,11 +6,11 @@ type call_msg = |
 type call_reply = |
 
 type cast_msg =
-  | JoinByMessage of Discord.Object.message
-  | LeaveByMessage of Discord.Object.message
-  | MessageArrived of message
-  | VoiceReady
-  | VoiceSpeaking of bool
+  [ `JoinByMessage of Discord.Object.message
+  | `LeaveByMessage of Discord.Object.message
+  | `MessageArrived of message
+  | `VoiceReady
+  | `VoiceSpeaking of bool ]
 
 type speaking_status = NotReady | Ready | Speaking
 
@@ -80,18 +80,19 @@ class t =
         speaking_status = NotReady;
       }
 
-    method private handle_status env ~sw state =
+    method private handle_status env ~sw state
+        : speaking_status * cast_msg -> state Gen_server.cast_result =
       function
       (*
        * status = NotReady
        *)
-      | NotReady, MessageArrived (`Bare _ as msg) ->
+      | NotReady, `MessageArrived (`Bare _ as msg) ->
           (* Enqueue only bare messages to speak out the welcome message *)
           enqueue_message state msg;
           `NoReply state
-      | NotReady, MessageArrived _ -> (* Just ignore *) `NoReply state
-      | NotReady, VoiceReady -> `NoReply { state with speaking_status = Ready }
-      | NotReady, VoiceSpeaking _ ->
+      | NotReady, `MessageArrived _ -> (* Just ignore *) `NoReply state
+      | NotReady, `VoiceReady -> `NoReply { state with speaking_status = Ready }
+      | NotReady, `VoiceSpeaking _ ->
           (* invalid state *)
           Logs.warn (fun m ->
               m
@@ -102,12 +103,12 @@ class t =
       (*
        * status = Ready
        *)
-      | Ready, VoiceReady -> (* Just ignore *) `NoReply state
-      | Ready, MessageArrived msg ->
+      | Ready, `VoiceReady -> (* Just ignore *) `NoReply state
+      | Ready, `MessageArrived msg ->
           enqueue_message state msg;
           let state = consume_message env ~sw state in
           `NoReply state
-      | Ready, VoiceSpeaking _ ->
+      | Ready, `VoiceSpeaking _ ->
           (* invalid state *)
           Logs.warn (fun m ->
               m "invalid state detected: ready but received VoiceSpeaking: %s"
@@ -116,23 +117,23 @@ class t =
       (*
        * status = Speaking
        *)
-      | Speaking, VoiceReady | Speaking, VoiceSpeaking true ->
+      | Speaking, `VoiceReady | Speaking, `VoiceSpeaking true ->
           (* Just ignore *) `NoReply state
-      | Speaking, MessageArrived msg ->
+      | Speaking, `MessageArrived msg ->
           enqueue_message state msg;
           `NoReply state
-      | Speaking, VoiceSpeaking false ->
+      | Speaking, `VoiceSpeaking false ->
           let state = consume_message env ~sw state in
           `NoReply state
       (*
        * misc
        *)
-      | _, (JoinByMessage _ | LeaveByMessage _) -> failwith "invalid state"
+      | _, (`JoinByMessage _ | `LeaveByMessage _) -> failwith "invalid state"
 
     method! private handle_cast env ~sw state msg =
       let { agent; guild_id; speaking_status; _ } = state in
       match msg with
-      | JoinByMessage msg ->
+      | `JoinByMessage msg ->
           let ( >>= ) = Option.bind in
           agent
           |> Discord.Agent.get_voice_states ~guild_id ~user_id:msg.author.id
@@ -140,7 +141,7 @@ class t =
           |> Option.iter (fun channel_id ->
                  agent |> Discord.Agent.join_channel ~guild_id ~channel_id);
           `NoReply state
-      | LeaveByMessage _msg ->
+      | `LeaveByMessage _msg ->
           agent |> Discord.Agent.leave_channel ~guild_id;
           `NoReply state
       | _ -> self#handle_status env ~sw state (speaking_status, msg)
@@ -148,8 +149,8 @@ class t =
 
 let create () = new t
 let start env ~sw ~guild_id ~agent (t : t) = t#start env ~sw { guild_id; agent }
-let join_by_message msg t = t#cast (JoinByMessage msg)
-let leave_by_message msg t = t#cast (LeaveByMessage msg)
-let cast_message msg t = t#cast (MessageArrived (`Discord msg))
-let cast_voice_ready t = t#cast VoiceReady
-let cast_voice_speaking speaking t = t#cast (VoiceSpeaking speaking)
+let join_by_message msg t = t#cast (`JoinByMessage msg)
+let leave_by_message msg t = t#cast (`LeaveByMessage msg)
+let cast_message msg t = t#cast (`MessageArrived (`Discord msg))
+let cast_voice_ready t = t#cast `VoiceReady
+let cast_voice_speaking speaking t = t#cast (`VoiceSpeaking speaking)
