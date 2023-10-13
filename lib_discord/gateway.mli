@@ -1,5 +1,5 @@
 type t
-type consumer_cast_msg = Event.t
+type consumer_cast_msg = [ `Event of Event.t ]
 
 val spawn :
   Config.t ->

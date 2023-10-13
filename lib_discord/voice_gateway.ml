@@ -1,6 +1,6 @@
 let encryption_mode = "xsalsa20_poly1305"
 
-type consumer_cast_msg = Event.t
+type consumer_cast_msg = [ `Event of Event.t ]
 
 type init_arg = {
   guild_id : string;
@@ -123,7 +123,8 @@ class t =
           state
       | SessionDescription { secret_key; _ } ->
           Voice_udp_stream.attach_secret_key state.udp_stream secret_key;
-          state.consumer#cast (Event.VoiceReady { guild_id = state.guild_id });
+          state.consumer#cast
+            (`Event (Event.VoiceReady { guild_id = state.guild_id }));
           state
       | Identify _ | SelectProtocol _ | Speaking _ | Resume _ | Heartbeat _ ->
           failwith "Unexpected event"
@@ -183,7 +184,8 @@ class t =
             |> to_yojson)
           |> send_json (Option.get state.ws_conn);
           state.consumer#cast
-            (Event.VoiceSpeaking { guild_id = state.guild_id; speaking });
+            (`Event
+              (Event.VoiceSpeaking { guild_id = state.guild_id; speaking }));
           `NoReply state
   end
 

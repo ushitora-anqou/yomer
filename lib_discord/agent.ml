@@ -34,14 +34,12 @@ class t =
   object (self)
     inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
 
-    method private as_consumer =
-      object
-        method cast : Event.t -> unit = fun ev -> self#cast (`Event ev)
-      end
-
     method private init env ~sw { config; consumer } =
       let st = State.start env ~sw in
-      let gw = Gateway.spawn config env sw st self#as_consumer in
+      let gw =
+        Gateway.spawn config env sw st
+          (self :> Gateway.consumer_cast_msg Gen_server.process)
+      in
       { config; st; gw; consumer }
 
     method! private handle_cast env ~sw ({ config; st; gw; consumer } as state)
@@ -57,7 +55,9 @@ class t =
            with
           | false, _ -> ()
           | true, _ ->
-              Voice_gateway.start vgw config env sw self#as_consumer ~guild_id);
+              Voice_gateway.start vgw config env sw
+                (self :> Gateway.consumer_cast_msg Gen_server.process)
+                ~guild_id);
           Gateway.send_voice_state_update ~guild_id ~channel_id ~self_mute
             ~self_deaf gw;
           `NoReply state

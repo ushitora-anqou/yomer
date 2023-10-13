@@ -1,6 +1,6 @@
 open Util
 
-type consumer_cast_msg = Event.t
+type consumer_cast_msg = [ `Event of Event.t ]
 
 type init_arg = {
   consumer : consumer_cast_msg Gen_server.process;
@@ -181,7 +181,7 @@ class t =
             in
             let ev = Event.of_yojson json in
             let state = self#handle_event env ~sw state ev in
-            state.consumer#cast ev;
+            state.consumer#cast (`Event ev);
             `NoReply state
           with e ->
             Logs.err (fun m ->
