@@ -23,20 +23,14 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
         | Some guild -> (guild, state)
         | None ->
             let guild = Guild.create () in
-            guild |> Guild.start env ~sw ~guild_id ~agent;
+            guild |> Guild.start env ~sw ~guild_id ~agent ~config;
             (guild, { guilds = state.guilds |> StringMap.add guild_id guild })
       in
 
       match parse_command msg.content with
       | [ (Some "!ping", None) ] ->
-          Logs.info (fun m -> m "ping");
-          if
-            Discord.Rest.make_create_message_param
-              ~embeds:[ Discord.Object.make_embed ~description:"pong" () ]
-              ()
-            |> Discord.Rest.create_message env config msg.channel_id
-            |> Result.is_error
-          then Logs.err (fun m -> m "Failed to send pong");
+          Logs.info (fun m -> m "Received ping");
+          guild |> Guild.ping msg.channel_id;
           state
       | [ (Some "!join", None) ] ->
           guild |> Guild.join_by_message msg;

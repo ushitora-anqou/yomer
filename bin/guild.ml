@@ -1,7 +1,13 @@
 module Gen_server = Discord.Gen_server
 
 type message = [ `Bare of string | `Discord of Discord.Object.message ]
-type init_arg = { guild_id : string; agent : Discord.Agent.t }
+
+type init_arg = {
+  guild_id : string;
+  agent : Discord.Agent.t;
+  config : Discord.Config.t;
+}
+
 type call_msg = |
 type call_reply = |
 
@@ -10,11 +16,13 @@ type cast_msg =
   | `LeaveByMessage of Discord.Object.message
   | `MessageArrived of message
   | `VoiceReady
-  | `VoiceSpeaking of bool ]
+  | `VoiceSpeaking of bool
+  | `Ping of string (* channel_id *) ]
 
 type speaking_status = NotReady | Ready | Speaking
 
 type state = {
+  config : Discord.Config.t;
   guild_id : string;
   agent : Discord.Agent.t;
   msg_queue : message Queue.t;
@@ -72,8 +80,9 @@ class t =
   object (self)
     inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
 
-    method private init _env ~sw:_ { guild_id; agent } =
+    method private init _env ~sw:_ { guild_id; agent; config } =
       {
+        config;
         guild_id;
         agent;
         msg_queue = Queue.create ();
@@ -128,7 +137,8 @@ class t =
       (*
        * misc
        *)
-      | _, (`JoinByMessage _ | `LeaveByMessage _) -> failwith "invalid state"
+      | _, (`JoinByMessage _ | `LeaveByMessage _ | `Ping _) ->
+          failwith "invalid state"
 
     method! private handle_cast env ~sw state msg =
       let { agent; guild_id; speaking_status; _ } = state in
@@ -144,13 +154,26 @@ class t =
       | `LeaveByMessage _msg ->
           agent |> Discord.Agent.leave_channel ~guild_id;
           `NoReply state
+      | `Ping channel_id ->
+          if
+            Discord.Rest.make_create_message_param
+              ~embeds:[ Discord.Object.make_embed ~description:"pong" () ]
+              ()
+            |> Discord.Rest.create_message env state.config channel_id
+            |> Result.is_error
+          then Logs.err (fun m -> m "Failed to send pong");
+          `NoReply state
       | _ -> self#handle_status env ~sw state (speaking_status, msg)
   end
 
 let create () = new t
-let start env ~sw ~guild_id ~agent (t : t) = t#start env ~sw { guild_id; agent }
+
+let start env ~sw ~guild_id ~agent ~config (t : t) =
+  t#start env ~sw { guild_id; agent; config }
+
 let join_by_message msg t = t#cast (`JoinByMessage msg)
 let leave_by_message msg t = t#cast (`LeaveByMessage msg)
 let cast_message msg t = t#cast (`MessageArrived (`Discord msg))
 let cast_voice_ready t = t#cast `VoiceReady
 let cast_voice_speaking speaking t = t#cast (`VoiceSpeaking speaking)
+let ping channel_id t = t#cast (`Ping channel_id)
