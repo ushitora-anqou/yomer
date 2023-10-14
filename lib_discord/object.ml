@@ -40,3 +40,6 @@ type message = {
 
 type guild_member = { nick : string option; user : user option }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
+
+type role = { id : string; name : string }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
