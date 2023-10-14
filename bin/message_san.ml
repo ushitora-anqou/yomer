@@ -64,6 +64,12 @@ let replace_with_alternatives =
       (Regex.e "ゖ", "ヶ");
       (Regex.e "ヷ", "ヴァ");
       (Regex.e "〜", "ー");
+      (* FIXME: The following regexes need unicode support of PCRE2
+         (Regex.e "[,、]+", "、");
+         (Regex.e "[.。]+", "。");
+         (Regex.e "[!！][!！?？]+", "！");
+         (Regex.e "[?？][!！?？]+", "？");
+      *)
     ]
   in
   fun text ->
