@@ -64,3 +64,9 @@ let get_guild_roles (env : Eio_unix.Stdenv.base) config ~guild_id =
   request env config __FUNCTION__ ~meth:`GET
     ("/guilds/" ^ guild_id ^ "/roles")
     (fun x -> x |> Yojson.Safe.Util.to_list |> List.map Object.role_of_yojson)
+
+let get_guild_channels (env : Eio_unix.Stdenv.base) config ~guild_id =
+  request env config __FUNCTION__ ~meth:`GET
+    ("/guilds/" ^ guild_id ^ "/channels")
+    (fun x ->
+      x |> Yojson.Safe.Util.to_list |> List.map Object.channel_of_yojson)
