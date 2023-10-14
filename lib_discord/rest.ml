@@ -22,6 +22,21 @@ let request ~meth ?body env config path =
   in
   (Cohttp.Response.status (fst resp), body)
 
+let request (env : Eio_unix.Stdenv.base) config name ~meth ?body url of_yojson =
+  match request env config ~meth ?body url with
+  | code, Some body when Cohttp.Code.(code |> code_of_status |> is_success) -> (
+      Logs.info (fun m -> m "%s: %s" name (Yojson.Safe.to_string body));
+      try Ok (of_yojson body)
+      with exn ->
+        Error (Printf.sprintf "%s: %s" name (Printexc.to_string exn)))
+  | code, body ->
+      Error
+        (Printf.sprintf "%s: %s: %s" name
+           (Cohttp.Code.string_of_status code)
+           (body |> Option.fold ~none:"" ~some:Yojson.Safe.to_string))
+  | exception exn ->
+      Error (Printf.sprintf "%s failed: %s" name (Printexc.to_string exn))
+
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
 type create_message_param = {
@@ -31,19 +46,16 @@ type create_message_param = {
 [@@deriving make, yojson]
 
 let create_message (env : Eio_unix.Stdenv.base) config channel_id p =
-  match
-    request env config ~meth:`POST
-      ~body:(yojson_of_create_message_param p)
-      ("/channels/" ^ channel_id ^ "/messages")
-  with
-  | code, Some body when Cohttp.Code.(code |> code_of_status |> is_success) ->
-      Logs.info (fun m -> m "create_message: %s" (Yojson.Safe.to_string body));
-      Ok (Object.message_of_yojson body)
-  | code, body ->
-      Error
-        (Printf.sprintf "create_message: %s: %s"
-           (Cohttp.Code.string_of_status code)
-           (body |> Option.fold ~none:"" ~some:Yojson.Safe.to_string))
-  | exception exn ->
-      Error
-        (Printf.sprintf "create_message failed: %s" (Printexc.to_string exn))
+  request env config "create_message" ~meth:`POST
+    ~body:(yojson_of_create_message_param p)
+    ("/channels/" ^ channel_id ^ "/messages")
+    Object.message_of_yojson
+
+let get_user (env : Eio_unix.Stdenv.base) config ~user_id =
+  request env config __FUNCTION__ ~meth:`GET ("/users/" ^ user_id)
+    Object.user_of_yojson
+
+let get_guild_member (env : Eio_unix.Stdenv.base) config ~user_id ~guild_id =
+  request env config __FUNCTION__ ~meth:`GET
+    ("/guilds/" ^ guild_id ^ "/members/" ^ user_id)
+    Object.guild_member_of_yojson

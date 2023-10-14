@@ -71,7 +71,7 @@ let format_discord_message (msg : Discord.Object.message) =
 
   (content, msg.author.id)
 
-let start_speaking env ~sw state msg =
+let start_speaking env config ~sw state msg =
   let content, _user_id =
     match msg with
     | `Bare content -> (content, None)
@@ -79,6 +79,10 @@ let start_speaking env ~sw state msg =
         let content, user_id = format_discord_message msg in
         (content, Some user_id)
   in
+  let content =
+    Message_san.sanitize env config ~guild_id:state.guild_id ~text:content
+  in
+
   let wav = query_voice_provider env content in
   let src = Eio.Flow.string_source wav in
   state.agent
@@ -86,18 +90,18 @@ let start_speaking env ~sw state msg =
        (Eio.Stdenv.process_mgr env)
        ~sw ~guild_id:state.guild_id ~src:(`Pipe src)
 
-let rec consume_message env ~sw state =
+let rec consume_message env config ~sw state =
   match Queue.take_opt state.msg_queue with
   | None -> { state with speaking_status = Ready }
   | Some msg -> (
       try
-        start_speaking env ~sw state msg;
+        start_speaking env config ~sw state msg;
         { state with speaking_status = Speaking }
       with e ->
         Logs.err (fun m ->
             m "Failed to start speech: %s\n%s" (Printexc.to_string e)
               (Printexc.get_backtrace ()));
-        consume_message env ~sw state)
+        consume_message env config ~sw state)
 
 class t =
   object (self)
@@ -138,7 +142,7 @@ class t =
       | Ready, `VoiceReady -> (* Just ignore *) `NoReply state
       | Ready, `MessageArrived msg ->
           enqueue_message state msg;
-          let state = consume_message env ~sw state in
+          let state = consume_message env state.config ~sw state in
           `NoReply state
       | Ready, `VoiceSpeaking _ ->
           (* invalid state *)
@@ -155,7 +159,7 @@ class t =
           enqueue_message state msg;
           `NoReply state
       | Speaking, `VoiceSpeaking false ->
-          let state = consume_message env ~sw state in
+          let state = consume_message env state.config ~sw state in
           `NoReply state
       (*
        * misc

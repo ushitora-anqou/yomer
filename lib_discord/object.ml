@@ -2,7 +2,12 @@
 
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
-type user = { username : string; id : string }
+type user = {
+  id : string;
+  username : string;
+  global_name : string option;
+  bot : bool option; [@yojson.option]
+}
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
 
 type embed = { description : string option [@yojson.option] }
@@ -31,4 +36,7 @@ type message = {
   attachments : attachment list option; [@yojson.option]
   sticker_items : sticker_item list option; [@yojson.option]
 }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
+
+type guild_member = { nick : string option; user : user option }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
