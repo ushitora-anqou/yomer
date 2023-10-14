@@ -8,6 +8,12 @@ type user = { username : string; id : string }
 type embed = { description : string option [@yojson.option] }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
 
+type attachment = { id : string }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
+
+type sticker_item = { id : string; name : string }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
+
 type message = {
   id : string;
   author : user;
@@ -22,5 +28,7 @@ type message = {
   type_ : int; [@key "type"]
   guild_id : string option; [@yojson.option]
   embeds : embed list option; [@yojson.option]
+  attachments : attachment list option; [@yojson.option]
+  sticker_items : sticker_item list option; [@yojson.option]
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]

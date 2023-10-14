@@ -50,11 +50,34 @@ let enqueue_message state msg =
   let { msg_queue; _ } = state in
   Queue.push msg msg_queue
 
-let start_speaking env ~sw state msg =
+let format_discord_message (msg : Discord.Object.message) =
+  let dummy = "ちくわ大明神。" in
+
+  (* Concat dummy to content if there are attachments *)
   let content =
+    match msg.attachments with
+    | None | Some [] -> msg.content
+    | _ -> dummy ^ msg.content
+  in
+
+  (* Concat sticker names to content *)
+  let content =
+    msg.sticker_items |> Option.value ~default:[]
+    |> List.fold_left
+         (fun content (sticker : Discord.Object.sticker_item) ->
+           content ^ " " ^ sticker.name)
+         content
+  in
+
+  (content, msg.author.id)
+
+let start_speaking env ~sw state msg =
+  let content, _user_id =
     match msg with
-    | `Bare content -> content
-    | `Discord msg -> msg.Discord.Object.content
+    | `Bare content -> (content, None)
+    | `Discord msg ->
+        let content, user_id = format_discord_message msg in
+        (content, Some user_id)
   in
   let wav = query_voice_provider env content in
   let src = Eio.Flow.string_source wav in
