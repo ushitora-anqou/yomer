@@ -96,6 +96,23 @@ let replace_custom_emoji_with_name =
     | [| Some _; Some name |] -> Regex.substr name
     | _ -> assert false)
 
+let omit_if_too_long ~max_length text =
+  let fold_utf8 x y = Uuseg_string.fold_utf_8 `Grapheme_cluster x y in
+  let utf8_length = fold_utf8 (fun x _ -> x + 1) 0 in
+  let utf8_sub length s =
+    s
+    |> fold_utf8
+         (fun (i, acc) seg ->
+           if i < length then (i + 1, acc ^ seg) else (i, acc))
+         (0, "")
+    |> snd
+  in
+
+  if utf8_length text <= max_length then text
+  else
+    let text = utf8_sub max_length text in
+    text ^ "。以下ちくわ大明神。"
+
 let sanitize env config ~guild_id ~text =
   text
   |> replace_mention_with_display_name env config ~guild_id
@@ -103,4 +120,5 @@ let sanitize env config ~guild_id ~text =
   |> replace_channel_id_with_its_name env config ~guild_id
   |> replace_with_alternatives |> replace_url_with_dummy
   |> replace_code_block_with_dummy |> replace_custom_emoji_with_name
+  |> omit_if_too_long ~max_length:100
   |> String.trim

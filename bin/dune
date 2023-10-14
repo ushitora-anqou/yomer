@@ -18,5 +18,6 @@
   mirage-crypto-rng-eio
   pcre
   ptime
+  uuseg.string
   yojson)
  (flags :standard -cclib -lopus))
