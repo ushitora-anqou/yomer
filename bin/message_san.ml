@@ -84,10 +84,17 @@ let replace_code_block_with_dummy =
   let re = Regex.e ~flags:[ `DOTALL ] {|```.+```|} in
   fun text -> Regex.replace re (fun _ -> dummy_text) text
 
+let replace_custom_emoji_with_name =
+  let re = {|<:([^:]+):[0-9]+>|} in
+  Regex.replace (Regex.e re) (function
+    | [| Some _; Some name |] -> Regex.substr name
+    | _ -> assert false)
+
 let sanitize env config ~guild_id ~text =
   text
   |> replace_mention_with_display_name env config ~guild_id
   |> replace_mention_with_role env config ~guild_id
   |> replace_channel_id_with_its_name env config ~guild_id
   |> replace_with_alternatives |> replace_url_with_dummy
-  |> replace_code_block_with_dummy |> String.trim
+  |> replace_code_block_with_dummy |> replace_custom_emoji_with_name
+  |> String.trim
