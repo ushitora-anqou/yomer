@@ -7,7 +7,7 @@ let groups_of_substrings sub =
          |> Option.map (fun (off1, off2) ->
                 make_group ~offset:off1 ~length:(off2 - off1) ~substr:s))
 
-let e ptn = Pcre.regexp ptn
+let e ?flags ptn = Pcre.regexp ~study:true ~jit_compile:true ?flags ptn
 
 let match_ rex s =
   (try Pcre.exec_all ~rex s with Not_found -> [||])

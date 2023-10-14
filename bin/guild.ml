@@ -51,13 +51,11 @@ let enqueue_message state msg =
   Queue.push msg msg_queue
 
 let format_discord_message (msg : Discord.Object.message) =
-  let dummy = "ちくわ大明神。" in
-
   (* Concat dummy to content if there are attachments *)
   let content =
     match msg.attachments with
     | None | Some [] -> msg.content
-    | _ -> dummy ^ msg.content
+    | _ -> Message_san.dummy_text ^ msg.content
   in
 
   (* Concat sticker names to content *)
