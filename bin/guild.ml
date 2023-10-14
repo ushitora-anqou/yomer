@@ -179,7 +179,12 @@ class t =
           `NoReply state
       | `LeaveByMessage _msg ->
           agent |> Discord.Agent.leave_channel ~guild_id;
-          `NoReply state
+          `NoReply
+            {
+              state with
+              speaking_status = NotReady;
+              msg_queue = Queue.create ();
+            }
       | `Ping channel_id ->
           if
             Discord.Rest.make_create_message_param
