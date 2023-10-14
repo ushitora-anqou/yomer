@@ -83,6 +83,7 @@ let start_speaking env config ~sw state msg =
     Message_san.sanitize env config ~guild_id:state.guild_id ~text:content
   in
 
+  Logs.info (fun m -> m "Speaking: %s: %s" state.guild_id content);
   let wav = query_voice_provider env content in
   let src = Eio.Flow.string_source wav in
   state.agent

@@ -51,9 +51,26 @@ let replace_channel_id_with_its_name env config ~guild_id text =
            | _ -> whole)
        | _ -> assert false)
 
+let replace_with_alternatives =
+  let table =
+    [
+      (Regex.e "ゔ", "ヴ");
+      (Regex.e "ゕ", "ヵ");
+      (Regex.e "ゖ", "ヶ");
+      (Regex.e "ヷ", "ヴァ");
+      (Regex.e "〜", "ー");
+    ]
+  in
+  fun text ->
+    table
+    |> List.fold_left
+         (fun text (regex, replacement) ->
+           Regex.replace regex (fun _ -> replacement) text)
+         text
+
 let sanitize env config ~guild_id ~text =
   text
   |> replace_mention_with_display_name env config ~guild_id
   |> replace_mention_with_role env config ~guild_id
   |> replace_channel_id_with_its_name env config ~guild_id
-  |> String.trim
+  |> replace_with_alternatives |> String.trim
