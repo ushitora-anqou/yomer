@@ -4,12 +4,12 @@ module ProcessSet = Set.Make (struct
   let compare = compare
 end)
 
-type 'a key = 'a Process.t1 Hmap.key
+type 'a key = 'a Process.t2 Hmap.key
 
 type register_param =
-  | P : 'a Process.t1 Hmap.key * 'a Process.t1 -> register_param
+  | P : 'a Process.t2 Hmap.key * 'a Process.t2 -> register_param
 
-type send_param = P : 'a Process.t1 Hmap.key * 'a -> send_param
+type send_param = P : 'a Process.t2 Hmap.key * 'a -> send_param
 type init_arg = unit
 type call_msg = [ `Register of register_param | `Send of send_param ]
 

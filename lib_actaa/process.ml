@@ -10,15 +10,17 @@ end
 
 class type t0 = object end
 
-class type ['msg] intf = object
+class type ['msg] t1 = object
   method send : 'msg -> unit
 end
 
-class ['msg] t1 =
+type monitor = [ `EXIT of t0 * Stop_reason.t ] t1
+
+class ['msg] t2 =
   object
     val m : 'msg Mailbox.t = Mailbox.create ()
     val mtx : Eio.Mutex.t = Eio.Mutex.create ()
-    val mutable links : [ `EXIT of t0 * Stop_reason.t ] intf list = []
+    val mutable links : monitor list = []
     method send : 'msg -> unit = Mailbox.send m
     method private receive : 'msg = Mailbox.receive m
 
@@ -26,11 +28,9 @@ class ['msg] t1 =
       Eio.Mutex.use_rw ~protect:true mtx @@ fun () -> links <- l :: links
   end
 
-type monitor = [ `EXIT of t0 * Stop_reason.t ] intf
-
 class virtual ['init_arg, 'msg] t =
   object (self)
-    inherit ['msg] t1
+    inherit ['msg] t2
 
     method virtual on_spawn
         : Eio_unix.Stdenv.base ->

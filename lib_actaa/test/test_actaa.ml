@@ -39,8 +39,8 @@ class p3 =
     inherit [Registry.t * unit Registry.key, unit] Process.t
 
     method on_spawn _env ~sw:_ (reg, key) =
-      assert (Registry.register reg key (self :> _ Process.t1));
-      assert (not (Registry.register reg key (self :> _ Process.t1)));
+      assert (Registry.register reg key (self :> _ Process.t2));
+      assert (not (Registry.register reg key (self :> _ Process.t2)));
       let () = self#receive in
       Process.Stop_reason.Normal
   end
@@ -73,7 +73,7 @@ class p5 =
     inherit [Registry.t * int Registry.key, int] Process.t
 
     method on_spawn _env ~sw:_ (reg, key) =
-      assert (Registry.register reg key (self :> _ Process.t1));
+      assert (Registry.register reg key (self :> _ Process.t2));
       match self#receive with
       | 0 -> Process.Stop_reason.Normal
       | _ -> failwith "fail"
