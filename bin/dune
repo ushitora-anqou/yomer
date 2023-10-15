@@ -19,5 +19,6 @@
   pcre
   ptime
   uuseg.string
+  uutf
   yojson)
  (flags :standard -cclib -lopus))

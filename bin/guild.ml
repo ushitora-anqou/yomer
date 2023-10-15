@@ -80,6 +80,7 @@ let start_speaking env config ~sw state msg =
   let content =
     Message_san.sanitize env config ~guild_id:state.guild_id ~text:content
   in
+  if content = "" then failwith "sanitized message is empty";
 
   Logs.info (fun m -> m "Speaking: %s: %s" state.guild_id content);
   let wav = query_voice_provider env content in
