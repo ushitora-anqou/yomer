@@ -96,6 +96,38 @@ let replace_custom_emoji_with_name =
     | [| Some _; Some name |] -> Regex.substr name
     | _ -> assert false)
 
+let replace_emoji_with_name text =
+  let to_codepoints s =
+    let rec loop d acc =
+      match Uutf.decode d with
+      | `Uchar u -> loop d (Uchar.to_int u :: acc)
+      | _ -> List.rev acc
+    in
+    let d = Uutf.decoder (`String s) in
+    loop d []
+  in
+  let of_codepoints codes =
+    let buf = Buffer.create 0 in
+    let rec loop e = function
+      | [] ->
+          Uutf.encode e `End |> ignore;
+          Buffer.contents buf
+      | x :: xs ->
+          Uutf.encode e (`Uchar (Uchar.of_int x)) |> ignore;
+          loop e xs
+    in
+    let e = Uutf.encoder `UTF_8 (`Buffer buf) in
+    loop e codes
+  in
+  let rec aux acc = function
+    | [] -> acc |> List.rev |> List.flatten
+    | hd :: tl as codepoints -> (
+        match Joypixels.step codepoints with
+        | None -> aux ([ hd ] :: acc) tl
+        | Some (name, tl) -> aux (to_codepoints name :: acc) tl)
+  in
+  text |> to_codepoints |> aux [] |> of_codepoints
+
 let replace_non_sjis_with_empty text =
   let to_codepoints s =
     let rec loop d acc =
@@ -145,6 +177,6 @@ let sanitize env config ~guild_id ~text =
   |> replace_channel_id_with_its_name env config ~guild_id
   |> replace_with_alternatives |> replace_url_with_dummy
   |> replace_code_block_with_dummy |> replace_custom_emoji_with_name
-  |> replace_non_sjis_with_empty
+  |> replace_emoji_with_name |> replace_non_sjis_with_empty
   |> omit_if_too_long ~max_length:100
   |> String.trim
