@@ -41,7 +41,7 @@ class virtual ['init_arg, 'msg] t =
     method spawn ?(raise_exn = false) env ~sw args : unit =
       Eio.Fiber.fork ~sw @@ fun () ->
       let reason =
-        try self#on_spawn env ~sw args
+        try Eio.Switch.run (fun sw -> self#on_spawn env ~sw args)
         with e ->
           Stop_reason.Exn
             (Printf.sprintf "exception: %s\n%s" (Printexc.to_string e)

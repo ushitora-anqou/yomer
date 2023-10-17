@@ -7,15 +7,14 @@ type 'state cast_result =
 type 'state info_result =
   [ `NoReply of 'state | `Stop of Process.Stop_reason.t * 'state ]
 
-type ('call_msg, 'call_reply, 'cast_msg) msg =
+type ('call_msg, 'call_reply, 'cast_msg) basic_msg =
   [ `Cast of 'cast_msg
   | `Call of 'call_msg * 'call_reply Eio.Stream.t
-  | `Stop of Process.Stop_reason.t * unit Eio.Stream.t
-  | `EXIT of Process.t0 * Process.Stop_reason.t ]
+  | `Stop of Process.Stop_reason.t * unit Eio.Stream.t ]
 
-class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
+class virtual ['init_arg, 'msg, 'state] t =
   object (self)
-    inherit ['init_arg, ('call_msg, 'call_reply, 'cast_msg) msg] Process.t
+    inherit ['init_arg, 'msg] Process.t
 
     method private virtual init
         : Eio_unix.Stdenv.base -> sw:Eio.Switch.t -> 'init_arg -> 'state
@@ -56,7 +55,7 @@ class virtual ['init_arg, 'call_msg, 'call_reply, 'cast_msg, 'state] t =
         | `Stop (reason, reply_stream) ->
             Eio.Stream.add reply_stream ();
             (reason, state)
-        | `EXIT _ as msg -> (
+        | msg -> (
             match self#handle_info env ~sw state msg with
             | `NoReply state -> loop state
             | `Stop (reason, state) -> (reason, state))

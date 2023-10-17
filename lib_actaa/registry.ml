@@ -18,11 +18,13 @@ type call_reply =
   | `Send of bool (* correctly sent *) ]
 
 type cast_msg = [ `Stop ]
+type info_msg = [ `EXIT of Process.t0 * Process.Stop_reason.t ]
+type msg = [ (call_msg, call_reply, cast_msg) Gen_server.basic_msg | info_msg ]
 type state = { m : Hmap.t; died : ProcessSet.t (* FIXME: inefficient *) }
 
 class t =
   object (self)
-    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+    inherit [init_arg, msg, state] Gen_server.t
 
     method private init _env ~sw:_ _ =
       { m = Hmap.empty; died = ProcessSet.empty }
@@ -53,6 +55,7 @@ class t =
 
     method! private handle_info _env ~sw:_ state =
       function
+      | #Gen_server.basic_msg -> assert false
       | `EXIT (p, _) ->
           `NoReply { state with died = ProcessSet.add p state.died }
   end
