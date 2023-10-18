@@ -1,0 +1,4 @@
+(library
+ (name pcre2)
+ (libraries ctypes ctypes-foreign integers)
+ (flags :standard -cclib -lpcre2-8))

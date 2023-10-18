@@ -1,0 +1,4 @@
+(tests
+ (names test_pcre2)
+ (libraries alcotest pcre2)
+ (flags :standard -cclib -lpcre2-8))
