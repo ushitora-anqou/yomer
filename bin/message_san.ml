@@ -64,12 +64,6 @@ let replace_with_alternatives =
       (Regex.e "ゖ", "ヶ");
       (Regex.e "ヷ", "ヴァ");
       (Regex.e "〜", "ー");
-      (* FIXME: The following regexes need unicode support of PCRE2
-         (Regex.e "[,、]+", "、");
-         (Regex.e "[.。]+", "。");
-         (Regex.e "[!！][!！?？]+", "！");
-         (Regex.e "[?？][!！?？]+", "？");
-      *)
     ]
   in
   fun text ->
@@ -81,7 +75,7 @@ let replace_with_alternatives =
 
 let replace_url_with_dummy =
   let re =
-    Regex.e
+    Regex.e ~flags:[ `UTF; `UCP ]
       {|(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:\/?#[\]@!\$%&'\(\)\*\+,;=.]+|}
   in
   fun text -> Regex.replace re (fun _ -> dummy_text) text
@@ -127,6 +121,22 @@ let replace_emoji_with_name text =
         | Some (name, tl) -> aux (to_codepoints name :: acc) tl)
   in
   text |> to_codepoints |> aux [] |> of_codepoints
+
+let unify_punctuations =
+  let table =
+    [
+      (Regex.e ~flags:[ `UTF; `UCP ] "[,、]+", "、");
+      (Regex.e ~flags:[ `UTF; `UCP ] "[.。]+", "。");
+      (Regex.e ~flags:[ `UTF; `UCP ] "[!！][!！?？]+", "！");
+      (Regex.e ~flags:[ `UTF; `UCP ] "[?？][!！?？]+", "？");
+    ]
+  in
+  fun text ->
+    table
+    |> List.fold_left
+         (fun text (regex, replacement) ->
+           Regex.replace regex (fun _ -> replacement) text)
+         text
 
 let replace_non_sjis_with_empty text =
   let to_codepoints s =
@@ -177,6 +187,7 @@ let sanitize env config ~guild_id ~text =
   |> replace_channel_id_with_its_name env config ~guild_id
   |> replace_with_alternatives |> replace_url_with_dummy
   |> replace_code_block_with_dummy |> replace_custom_emoji_with_name
-  |> replace_emoji_with_name |> replace_non_sjis_with_empty
+  |> replace_emoji_with_name |> unify_punctuations
+  |> replace_non_sjis_with_empty
   |> omit_if_too_long ~max_length:100
   |> String.trim
