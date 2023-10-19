@@ -16,9 +16,9 @@
   mirage-clock-unix
   mirage-crypto-rng
   mirage-crypto-rng-eio
-  pcre
+  pcre2
   ptime
   uuseg.string
   uutf
   yojson)
- (flags :standard -cclib -lopus))
+ (flags :standard -cclib -lopus -cclib -lpcre2-8))
