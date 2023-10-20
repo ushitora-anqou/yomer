@@ -1,12 +1,8 @@
 let encryption_mode = "xsalsa20_poly1305"
 
 type consumer_cast_msg = [ `Event of Event.t ]
-
-type init_arg = {
-  guild_id : string;
-  consumer : consumer_cast_msg Gen_server.process;
-}
-
+type consumer = consumer_cast_msg Actaa.Gen_server.t_cast
+type init_arg = { guild_id : string; consumer : consumer }
 type call_msg = |
 type call_reply = |
 type voice_state = { user_id : string; session_id : string }
@@ -15,16 +11,16 @@ type voice_server = { token : string; endpoint : string }
 type cast_msg =
   [ `VoiceState of voice_state
   | `VoiceServer of voice_server
-  | `Timeout of [ `Heartbeat ]
   | `FrameSource of Eio.Flow.source
-  | `Speaking of int (* ssrc *) * bool (* speaking *)
-  | Ws.Process.msg ]
+  | `Speaking of int (* ssrc *) * bool (* speaking *) ]
 
+type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+type msg = [ basic_msg | `Timeout of [ `Heartbeat ] | Ws.Process.msg ]
 type process_status = WaitingParameters | Running
 
 type state = {
   guild_id : string;
-  consumer : consumer_cast_msg Gen_server.process;
+  consumer : consumer;
   udp_stream : Voice_udp_stream.t;
   voice_state : voice_state option;
   voice_server : voice_server option;
@@ -34,7 +30,7 @@ type state = {
 }
 [@@deriving make]
 
-type Gen_server.stop_reason += Restart
+type Actaa.Process.Stop_reason.t += Restart
 
 let send_json conn json =
   let content = Yojson.Safe.to_string json in
@@ -60,7 +56,7 @@ let send_heartbeat clock conn =
 
 class t =
   object (self)
-    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+    inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
     method private init _env ~sw:_ { guild_id; consumer } =
       let udp_stream = Voice_udp_stream.create () in
@@ -75,7 +71,7 @@ class t =
       let conn =
         Ws.connect ~sw env ("https://" ^ endpoint ^ "/?v=4&encoding=json")
       in
-      Ws.Process.start ~sw conn self;
+      Ws.Process.start ~sw conn (self :> _ Actaa.Process.t1);
       conn
 
     method start_running env ~sw state =
@@ -105,14 +101,13 @@ class t =
       | Voice_event.Hello { heartbeat_interval } ->
           let interval = heartbeat_interval /. 1000.0 in
           if Option.is_none state.heartbeat_interval then
-            Timeout.Process.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
-              self;
+            Actaa.Timer.spawn env ~sw ~seconds:interval ~id:`Heartbeat
+              ~target:(self :> _ Actaa.Timer.receiver)
+            |> ignore;
           { state with heartbeat_interval = Some interval }
       | Resumed | HeartbeatAck _ -> state
       | Ready { ip; port; ssrc; modes; _ } ->
-          let vgw =
-            (self :> Voice_udp_stream.vgw_cast_msg Gen_server.process)
-          in
+          let vgw = (self :> Voice_udp_stream.vgw) in
           Voice_udp_stream.connect env sw state.udp_stream
             { vgw; ip; port; ssrc; modes };
           let my_addr, my_port =
@@ -123,26 +118,23 @@ class t =
           state
       | SessionDescription { secret_key; _ } ->
           Voice_udp_stream.attach_secret_key state.udp_stream secret_key;
-          state.consumer#cast
+          Actaa.Gen_server.cast state.consumer
             (`Event (Event.VoiceReady { guild_id = state.guild_id }));
           state
       | Identify _ | SelectProtocol _ | Speaking _ | Resume _ | Heartbeat _ ->
           failwith "Unexpected event"
 
-    method! private handle_cast env ~sw state =
+    method! private handle_info env ~sw state =
       function
-      | `VoiceState x ->
-          let state = { state with voice_state = Some x } in
-          `NoReply (self#start_running_if_ready env ~sw state)
-      | `VoiceServer x ->
-          let state = { state with voice_server = Some x } in
-          `NoReply (self#start_running_if_ready env ~sw state)
+      | #basic_msg -> assert false
       | `Timeout `Heartbeat ->
           let clock = Eio.Stdenv.clock env in
           send_heartbeat clock (Option.get state.ws_conn);
-          Timeout.Process.start clock ~sw
-            (Option.get state.heartbeat_interval)
-            `Heartbeat self;
+          Actaa.Timer.spawn env ~sw
+            ~seconds:(Option.get state.heartbeat_interval)
+            ~id:`Heartbeat
+            ~target:(self :> _ Actaa.Timer.receiver)
+          |> ignore;
           `NoReply state
       | `WSText content -> (
           try
@@ -167,8 +159,19 @@ class t =
       | `WSClose reason ->
           Logs.info (fun m -> m "Voice gateway WS connection closed");
           `Stop
-            ( (if reason = `Status_code 4014 then Gen_server.Normal else Restart),
+            ( (if reason = `Status_code 4014 then
+                 Actaa.Process.Stop_reason.Normal
+               else Restart),
               state )
+
+    method! private handle_cast env ~sw state =
+      function
+      | `VoiceState x ->
+          let state = { state with voice_state = Some x } in
+          `NoReply (self#start_running_if_ready env ~sw state)
+      | `VoiceServer x ->
+          let state = { state with voice_server = Some x } in
+          `NoReply (self#start_running_if_ready env ~sw state)
       | `FrameSource src ->
           Voice_udp_stream.send_frame_source state.udp_stream src;
           `NoReply state
@@ -183,7 +186,7 @@ class t =
             Speaking { speaking = (if speaking then 1 else 0); delay = 0; ssrc }
             |> to_yojson)
           |> send_json (Option.get state.ws_conn);
-          state.consumer#cast
+          Actaa.Gen_server.cast state.consumer
             (`Event
               (Event.VoiceSpeaking { guild_id = state.guild_id; speaking }));
           `NoReply state
@@ -192,12 +195,12 @@ class t =
 let create () = new t
 
 let start t _config env sw consumer ~guild_id =
-  Gen_server.start t env ~sw { guild_id; consumer }
+  Actaa.Gen_server.start env ~sw { guild_id; consumer } t
 
 let attach_voice_state ~user_id ~session_id t =
-  t#cast (`VoiceState { user_id; session_id })
+  Actaa.Gen_server.cast t (`VoiceState { user_id; session_id })
 
 let attach_voice_server ~token ~endpoint t =
-  t#cast (`VoiceServer { token; endpoint })
+  Actaa.Gen_server.cast t (`VoiceServer { token; endpoint })
 
-let send_frame_source t src = t#cast (`FrameSource src)
+let send_frame_source t src = Actaa.Gen_server.cast t (`FrameSource src)

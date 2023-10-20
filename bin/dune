@@ -4,6 +4,7 @@
  (preprocess
   (pps ppx_deriving.make))
  (libraries
+  actaa
   cohttp
   cohttp-eio
   discord

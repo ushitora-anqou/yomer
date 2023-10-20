@@ -1,13 +1,8 @@
 open Util
 
 type consumer_cast_msg = [ `Event of Event.t ]
-
-type init_arg = {
-  consumer : consumer_cast_msg Gen_server.process;
-  config : Config.t;
-  state : State.t;
-}
-
+type consumer = consumer_cast_msg Actaa.Gen_server.t_cast
+type init_arg = { consumer : consumer; config : Config.t; state : State.t }
 type call_msg = |
 type call_reply = |
 
@@ -18,13 +13,12 @@ type voice_state = {
   self_deaf : bool;
 }
 
-type cast_msg =
-  [ `VoiceStateUpdate of voice_state
-  | `Timeout of [ `Heartbeat ]
-  | Ws.Process.msg ]
+type cast_msg = [ `VoiceStateUpdate of voice_state ]
+type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+type msg = [ basic_msg | `Timeout of [ `Heartbeat ] | Ws.Process.msg ]
 
 type state = {
-  consumer : consumer_cast_msg Gen_server.process;
+  consumer : consumer;
   ws_conn : Ws.conn;
   heartbeat_interval : float option;
   st : State.t;
@@ -34,7 +28,7 @@ type state = {
 }
 [@@deriving make]
 
-type Gen_server.stop_reason += Restart
+type Actaa.Process.Stop_reason.t += Restart
 
 let send_json conn json =
   let content = Yojson.Safe.to_string json in
@@ -51,12 +45,12 @@ let extract_sequence_number src =
 
 class t =
   object (self)
-    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+    inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
     method connect_ws env ~sw =
       let endpoint = "https://gateway.discord.gg/?v=10&encoding=json" in
       let conn = Ws.connect ~sw env endpoint in
-      Ws.Process.start ~sw conn self;
+      Ws.Process.start ~sw conn (self :> _ Actaa.Process.t1);
       conn
 
     method resume_ws env ~sw state =
@@ -73,7 +67,7 @@ class t =
       in
       Logs.info (fun m -> m "Resuming: %s" url);
       let conn = Ws.connect ~sw env url in
-      Ws.Process.start ~sw conn self;
+      Ws.Process.start ~sw conn (self :> _ Actaa.Process.t1);
 
       (* Send Resume event *)
       Event.(
@@ -96,8 +90,9 @@ class t =
       | Hello { heartbeat_interval } ->
           let interval = float_of_int heartbeat_interval /. 1000.0 in
           if Option.is_none state.heartbeat_interval then
-            Timeout.Process.start (Eio.Stdenv.clock env) ~sw interval `Heartbeat
-              self;
+            Actaa.Timer.spawn env ~sw ~seconds:interval ~id:`Heartbeat
+              ~target:(self :> _ Actaa.Timer.receiver)
+            |> ignore;
 
           Identify
             {
@@ -158,18 +153,16 @@ class t =
       | Identify _ | Resume _ | VoiceReady _ | VoiceSpeaking _ ->
           failwith "Unexpected event"
 
-    method! private handle_cast env ~sw state =
+    method! private handle_info env ~sw state =
       function
-      | `VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf } ->
-          Event.VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf }
-          |> Event.to_yojson |> send_json state.ws_conn;
-          `NoReply state
+      | #basic_msg -> assert false
       | `Timeout `Heartbeat ->
-          let clock = Eio.Stdenv.clock env in
           send_heartbeat state.seq state.ws_conn;
-          Timeout.Process.start clock ~sw
-            (Option.get state.heartbeat_interval)
-            `Heartbeat self;
+          Actaa.Timer.spawn env ~sw
+            ~seconds:(Option.get state.heartbeat_interval)
+            ~id:`Heartbeat
+            ~target:(self :> _ Actaa.Timer.receiver)
+          |> ignore;
           `NoReply state
       | `WSText content -> (
           try
@@ -181,7 +174,7 @@ class t =
             in
             let ev = Event.of_yojson json in
             let state = self#handle_event env ~sw state ev in
-            state.consumer#cast (`Event ev);
+            Actaa.Gen_server.cast state.consumer (`Event ev);
             `NoReply state
           with e ->
             Logs.err (fun m ->
@@ -198,12 +191,20 @@ class t =
       | `WSClose _ ->
           Logs.info (fun m -> m "Gateway WS connection closed.");
           `Stop (Restart, state)
+
+    method! private handle_cast _env ~sw:_ state =
+      function
+      | `VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf } ->
+          Event.VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf }
+          |> Event.to_yojson |> send_json state.ws_conn;
+          `NoReply state
   end
 
 let spawn config env sw state consumer =
   let t = new t in
-  Gen_server.start t env ~sw { config; state; consumer };
+  Actaa.Gen_server.start env ~sw { config; state; consumer } t;
   t
 
 let send_voice_state_update ~guild_id ?channel_id ~self_mute ~self_deaf t =
-  t#cast @@ `VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf }
+  Actaa.Gen_server.cast t
+    (`VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf })

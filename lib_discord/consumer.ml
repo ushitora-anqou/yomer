@@ -15,6 +15,8 @@ type 'user_state init_arg = {
 type call_msg = |
 type call_reply = |
 type cast_msg = Event.t
+type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+type msg = basic_msg
 
 type 'user_state state = {
   agent : Agent.t;
@@ -25,13 +27,13 @@ type 'user_state state = {
 class ['user_state] t =
   object (self)
     inherit
-      ['user_state init_arg, call_msg, call_reply, cast_msg, 'user_state state] Gen_server
-                                                                                .t
+      ['user_state init_arg, msg, 'user_state state] Actaa.Gen_server.behaviour
 
     method private init env ~sw { config; user_init; user_handler } =
       let agent = new Agent.t in
-      Gen_server.start agent env ~sw
-        { config; consumer = (self :> _ Gen_server.process) };
+      agent
+      |> Actaa.Gen_server.start env ~sw
+           Agent.{ config; consumer = (self :> consumer) };
       let user_state = user_init () in
       { agent; user_state; user_handler }
 
@@ -49,5 +51,5 @@ class ['user_state] t =
 
 let start env ~sw config user_init user_handler =
   let t = new t in
-  Gen_server.start t env ~sw { config; user_init; user_handler };
+  t |> Actaa.Gen_server.start env ~sw { config; user_init; user_handler };
   t

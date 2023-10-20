@@ -37,7 +37,6 @@ module Agent = Agent
 module Config = Config
 module Consumer = Consumer
 module Event = Event
-module Gen_server = Gen_server
 module Httpx = Httpx
 module Intent = Intent
 module Object = Object

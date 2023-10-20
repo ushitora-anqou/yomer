@@ -1,8 +1,9 @@
 type t
 type vgw_cast_msg = [ `Speaking of int (* ssrc *) * bool (* speaking *) ]
+type vgw = vgw_cast_msg Actaa.Gen_server.t_cast
 
 type connection_param = {
-  vgw : vgw_cast_msg Gen_server.process;
+  vgw : vgw;
   ip : string;
   port : int;
   ssrc : int;

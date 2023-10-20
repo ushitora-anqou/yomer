@@ -1,5 +1,6 @@
 type t
 type consumer_cast_msg = [ `Event of Event.t ]
+type consumer = consumer_cast_msg Actaa.Gen_server.t_cast
 
 val create : unit -> t
 
@@ -8,7 +9,7 @@ val start :
   Config.t ->
   Eio_unix.Stdenv.base ->
   Eio.Switch.t ->
-  consumer_cast_msg Gen_server.process ->
+  consumer ->
   guild_id:string ->
   unit
 

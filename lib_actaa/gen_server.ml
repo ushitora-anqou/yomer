@@ -67,6 +67,8 @@ class virtual ['init_arg, 'msg, 'state] behaviour =
     method on_spawn env ~sw (args : 'init_arg) = self#run env ~sw args
   end
 
+let start = Process.spawn
+
 let stop s =
   let stream = Eio.Stream.create 0 in
   s#send (`Stop (Process.Stop_reason.Normal, stream));
@@ -83,4 +85,8 @@ class type ['call_msg, 'call_reply, 'cast_msg] t = object
   method send :
     [ `Call of 'call_msg * 'call_reply Eio.Stream.t | `Cast of 'cast_msg ] ->
     unit
+end
+
+class type ['cast_msg] t_cast = object
+  method send : [ `Cast of 'cast_msg ] -> unit
 end

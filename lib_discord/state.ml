@@ -15,11 +15,13 @@ struct
   type call_msg = [ `Set of S.key * S.value | `Get of S.key ]
   type call_reply = [ `Set of bool * S.value | `Get of S.value option ]
   type cast_msg = [ `Set of S.key * S.value | `Unset of S.key ]
+  type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+  type msg = basic_msg
   type state = { store : S.value Map.t }
 
   class t =
     object
-      inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+      inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
       method private init _env ~sw:_ () = { store = Map.empty }
       method! private terminate _ ~sw:_ _state _reason = ()
 
@@ -77,35 +79,40 @@ let start env ~sw =
   let me = new Me.t in
   let voice_states = new Voice_states.t in
   let voice = new Voice.t in
-  Gen_server.start me env ~sw ();
-  Gen_server.start voice_states env ~sw ();
-  Gen_server.start voice env ~sw ();
+  Actaa.Gen_server.start env ~sw () me;
+  Actaa.Gen_server.start env ~sw () voice_states;
+  Actaa.Gen_server.start env ~sw () voice;
   { me; voice_states; voice }
 
 let me { me; _ } =
-  match Gen_server.call me (`Get ()) with `Get me -> me | _ -> assert false
+  match Actaa.Gen_server.call me (`Get ()) with
+  | `Get me -> me
+  | _ -> assert false
 
-let set_me { me; _ } user = Gen_server.cast me (`Set ((), user))
+let set_me { me; _ } user = Actaa.Gen_server.cast me (`Set ((), user))
 
 let voice_states { voice_states; _ } ~guild_id ~user_id =
-  match Gen_server.call voice_states (`Get (guild_id, user_id)) with
+  match Actaa.Gen_server.call voice_states (`Get (guild_id, user_id)) with
   | `Get voice_state -> voice_state
   | _ -> assert false
 
 let set_voice_states { voice_states; _ } ~guild_id ~user_id voice_state =
-  Gen_server.cast voice_states (`Set ((guild_id, user_id), voice_state))
+  Actaa.Gen_server.cast voice_states (`Set ((guild_id, user_id), voice_state))
 
 let voice { voice; _ } guild_id =
-  match Gen_server.call voice (`Get guild_id) with
+  match Actaa.Gen_server.call voice (`Get guild_id) with
   | `Get voice -> voice
   | _ -> assert false
 
 let set_voice { voice; _ } ~guild_id ~channel_id ~gateway =
-  Gen_server.cast voice (`Set (guild_id, { channel_id; gateway }))
+  Actaa.Gen_server.cast voice (`Set (guild_id, { channel_id; gateway }))
 
-let unset_voice { voice; _ } ~guild_id = Gen_server.cast voice (`Unset guild_id)
+let unset_voice { voice; _ } ~guild_id =
+  Actaa.Gen_server.cast voice (`Unset guild_id)
 
 let set_voice_if_not_exists { voice; _ } ~guild_id ~channel_id ~gateway =
-  match Gen_server.call voice (`Set (guild_id, { channel_id; gateway })) with
+  match
+    Actaa.Gen_server.call voice (`Set (guild_id, { channel_id; gateway }))
+  with
   | `Set x -> x
   | _ -> assert false

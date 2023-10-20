@@ -49,8 +49,9 @@ class virtual ['init_arg, 'msg] t =
       in
       Eio.Mutex.use_rw ~protect:true mtx @@ fun () ->
       links |> List.iter (fun l -> l#send (`EXIT ((self :> t0), reason)));
-      if reason <> Stop_reason.Normal && raise_exn then
-        failwith (Stop_reason.to_string reason);
+      if reason <> Stop_reason.Normal then (
+        Logs.err (fun m -> m "stop reason: %s" (Stop_reason.to_string reason));
+        if raise_exn then failwith (Stop_reason.to_string reason));
       ()
   end
 

@@ -13,7 +13,8 @@ type play_voice = {
 }
 
 type get_voice_states = { guild_id : string; user_id : string }
-type init_arg = { config : Config.t; consumer : Event.t Gen_server.process }
+type consumer = Event.t Actaa.Gen_server.t_cast
+type init_arg = { config : Config.t; consumer : consumer }
 type call_msg = [ `GetVoiceStates of get_voice_states ]
 type call_reply = [ `GetVoiceStates of Voice_state.t option ]
 
@@ -23,30 +24,30 @@ type cast_msg =
   | `LeaveChannel of leave_channel
   | `PlayVoice of play_voice ]
 
+type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+type msg = basic_msg
+
 type state = {
   config : Config.t;
   st : State.t;
   gw : Gateway.t;
-  consumer : Event.t Gen_server.process;
+  consumer : consumer;
 }
 
 class t =
   object (self)
-    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+    inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
     method private init env ~sw { config; consumer } =
       let st = State.start env ~sw in
-      let gw =
-        Gateway.spawn config env sw st
-          (self :> Gateway.consumer_cast_msg Gen_server.process)
-      in
+      let gw = Gateway.spawn config env sw st (self :> Gateway.consumer) in
       { config; st; gw; consumer }
 
     method! private handle_cast env ~sw ({ config; st; gw; consumer } as state)
         =
       function
       | `Event ev ->
-          consumer#cast ev;
+          Actaa.Gen_server.cast consumer ev;
           `NoReply state
       | `JoinChannel { self_mute; self_deaf; guild_id; channel_id } ->
           let vgw = Voice_gateway.create () in
@@ -56,7 +57,7 @@ class t =
           | false, _ -> ()
           | true, _ ->
               Voice_gateway.start vgw config env sw
-                (self :> Gateway.consumer_cast_msg Gen_server.process)
+                (self :> Gateway.consumer)
                 ~guild_id);
           Gateway.send_voice_state_update ~guild_id ~channel_id ~self_mute
             ~self_deaf gw;
@@ -83,15 +84,15 @@ class t =
   end
 
 let join_channel ?(self_mute = false) ?(self_deaf = false) ~guild_id ~channel_id
-    agent =
-  Gen_server.cast agent
+    (agent : t) =
+  Actaa.Gen_server.cast agent
     (`JoinChannel { guild_id; channel_id; self_mute; self_deaf })
 
-let leave_channel ~guild_id agent =
-  Gen_server.cast agent (`LeaveChannel { guild_id })
+let leave_channel ~guild_id (agent : t) =
+  Actaa.Gen_server.cast agent (`LeaveChannel { guild_id })
 
-let get_voice_states ~guild_id ~user_id agent =
-  match Gen_server.call agent (`GetVoiceStates { guild_id; user_id }) with
+let get_voice_states ~guild_id ~user_id (agent : t) =
+  match Actaa.Gen_server.call agent (`GetVoiceStates { guild_id; user_id }) with
   | `GetVoiceStates v -> v
 
 let spawn_youtubedl process_mgr ~sw ~stdout url =
@@ -122,12 +123,12 @@ let spawn_ffmpeg process_mgr ~sw ~stdin ~stdout =
       "pipe:1";
     ]
 
-let play_voice process_mgr ~sw ~guild_id ~src agent =
+let play_voice process_mgr ~sw ~guild_id ~src (agent : t) =
   let play src =
     let src', sink' = Eio.Process.pipe ~sw process_mgr in
     let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
     Eio.Flow.close sink';
-    Gen_server.cast agent
+    Actaa.Gen_server.cast agent
       (`PlayVoice { guild_id; src = `FrameSource (src' :> Eio.Flow.source) })
   in
   match src with

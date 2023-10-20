@@ -1,5 +1,3 @@
-module Gen_server = Discord.Gen_server
-
 type message = [ `Bare of string | `Discord of Discord.Object.message ]
 
 type init_arg = {
@@ -19,6 +17,8 @@ type cast_msg =
   | `VoiceSpeaking of bool
   | `Ping of string (* channel_id *) ]
 
+type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+type msg = basic_msg
 type speaking_status = NotReady | Ready | Speaking
 
 type state = {
@@ -29,7 +29,7 @@ type state = {
   speaking_status : speaking_status;
 }
 
-type Discord.Gen_server.stop_reason += Restart
+type Actaa.Process.Stop_reason.t += Restart
 
 let voice_provider_endpoint = "http://localhost:8400"
 
@@ -105,7 +105,7 @@ let rec consume_message env config ~sw state =
 
 class t =
   object (self)
-    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+    inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
     method private init _env ~sw:_ { guild_id; agent; config } =
       {
@@ -117,7 +117,7 @@ class t =
       }
 
     method private handle_status env ~sw state
-        : speaking_status * cast_msg -> state Gen_server.cast_result =
+        : speaking_status * cast_msg -> state Actaa.Gen_server.cast_result =
       function
       (*
        * status = NotReady
@@ -201,11 +201,17 @@ class t =
 let create () = new t
 
 let start env ~sw ~guild_id ~agent ~config (t : t) =
-  t#start env ~sw { guild_id; agent; config }
+  Actaa.Gen_server.start env ~sw { guild_id; agent; config } t
 
-let join_by_message msg t = t#cast (`JoinByMessage msg)
-let leave_by_message msg t = t#cast (`LeaveByMessage msg)
-let cast_message msg t = t#cast (`MessageArrived (`Discord msg))
-let cast_voice_ready t = t#cast `VoiceReady
-let cast_voice_speaking speaking t = t#cast (`VoiceSpeaking speaking)
-let ping channel_id t = t#cast (`Ping channel_id)
+let join_by_message msg t = Actaa.Gen_server.cast t (`JoinByMessage msg)
+let leave_by_message msg t = Actaa.Gen_server.cast t (`LeaveByMessage msg)
+
+let cast_message msg t =
+  Actaa.Gen_server.cast t (`MessageArrived (`Discord msg))
+
+let cast_voice_ready t = Actaa.Gen_server.cast t `VoiceReady
+
+let cast_voice_speaking speaking t =
+  Actaa.Gen_server.cast t (`VoiceSpeaking speaking)
+
+let ping channel_id t = Actaa.Gen_server.cast t (`Ping channel_id)

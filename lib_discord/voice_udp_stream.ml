@@ -9,36 +9,29 @@ let num_burst_frames = 10
 let five_silent_frames = List.init 5 (fun _ -> "\xf8\xff\xfe")
 
 type vgw_cast_msg = [ `Speaking of int (* ssrc *) * bool (* speaking *) ]
+type vgw = vgw_cast_msg Actaa.Gen_server.t_cast
 
 type connection_param = {
-  vgw : vgw_cast_msg Gen_server.process;
+  vgw : vgw;
   ip : string;
   port : int;
   ssrc : int;
   modes : string list;
 }
 
-type init_arg = {
-  ip : string;
-  port : int;
-  ssrc : int;
-  vgw : vgw_cast_msg Gen_server.process;
-}
-
+type init_arg = { ip : string; port : int; ssrc : int; vgw : vgw }
 type call_msg = [ `DiscoverIP ]
 type call_reply = [ `DiscoverIP of string (* ip *) * int (* port *) ]
-
-type cast_msg =
-  [ `SecretKey of int list
-  | `FrameSource of Eio.Flow.source
-  | `Timeout of string ]
+type cast_msg = [ `SecretKey of int list | `FrameSource of Eio.Flow.source ]
+type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+type msg = [ basic_msg | `Timeout of string ]
 
 type state = {
   socket : Eio.Net.datagram_socket;
   dst : Eio.Net.Sockaddr.datagram;
   ssrc : int;
   secret_key : Sodium.secret Sodium.Secret_box.key option;
-  vgw : vgw_cast_msg Gen_server.process;
+  vgw : vgw;
   seq_num : int;
   timestamp : int;
   opus_encoder : Opus.Encoder.t;
@@ -72,7 +65,8 @@ let discover_ip ssrc send recv =
   let port = Cstruct.BE.get_uint16 buf 72 in
   (ip, port)
 
-let send_speaking state v = state.vgw#cast (`Speaking (state.ssrc, v))
+let send_speaking state v =
+  Actaa.Gen_server.cast state.vgw (`Speaking (state.ssrc, v))
 
 let send_frame state frame =
   let opus =
@@ -120,7 +114,8 @@ let read_at_most src buf =
   in
   loop buf
 
-let start_sending_frames_from_source clock ~sw state self =
+let start_sending_frames_from_source env ~sw state self =
+  let clock = Eio.Stdenv.clock env in
   let start_time = Eio.Time.now clock in
 
   (* Choose correct speaking source *)
@@ -168,9 +163,10 @@ let start_sending_frames_from_source clock ~sw state self =
       (* Sleep while sending *)
       let end_time = Eio.Time.now clock in
       let diff = end_time -. start_time in
-      Timeout.Process.start clock ~sw
-        ((second_per_frame *. float_of_int (List.length frames)) -. diff)
-        "" self;
+      let seconds =
+        (second_per_frame *. float_of_int (List.length frames)) -. diff
+      in
+      Actaa.Timer.spawn env ~sw ~id:"" ~seconds ~target:self |> ignore;
 
       if source_alive then state
       else
@@ -186,7 +182,7 @@ let start_sending_frames_from_source clock ~sw state self =
 
 class t =
   object (self)
-    inherit [init_arg, call_msg, call_reply, cast_msg, state] Gen_server.t
+    inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
     method private init env ~sw { ip; port; ssrc; vgw } =
       let socket =
@@ -214,6 +210,16 @@ class t =
           let addr = discover_ip state.ssrc (udp_send state) (udp_recv state) in
           `Reply (`DiscoverIP addr, state)
 
+    method! private handle_info env ~sw state =
+      function
+      | #basic_msg -> assert false
+      | `Timeout _ ->
+          let state =
+            start_sending_frames_from_source env ~sw state
+              (self :> _ Actaa.Timer.receiver)
+          in
+          `NoReply state
+
     method! private handle_cast env ~sw state =
       function
       | `SecretKey key ->
@@ -231,24 +237,20 @@ class t =
           | Some _ -> `NoReply state
           | None ->
               let state =
-                start_sending_frames_from_source (Eio.Stdenv.clock env) ~sw
-                  state self
+                start_sending_frames_from_source env ~sw state
+                  (self :> _ Actaa.Timer.receiver)
               in
               `NoReply state)
-      | `Timeout _ ->
-          let state =
-            start_sending_frames_from_source (Eio.Stdenv.clock env) ~sw state
-              self
-          in
-          `NoReply state
   end
 
 let create () = new t
 
 let connect env sw (t : t) ({ vgw; ip; port; ssrc; _ } : connection_param) =
-  t#start env ~sw { ip; port; ssrc; vgw }
+  t |> Actaa.Gen_server.start env ~sw { ip; port; ssrc; vgw }
 
-let send_frame_source t src = t#cast (`FrameSource src)
-let attach_secret_key t key = t#cast (`SecretKey key)
-let close t = t#stop
-let discover_ip (t : t) = match t#call `DiscoverIP with `DiscoverIP r -> r
+let send_frame_source t src = Actaa.Gen_server.cast t (`FrameSource src)
+let attach_secret_key t key = Actaa.Gen_server.cast t (`SecretKey key)
+let close t = Actaa.Gen_server.stop t
+
+let discover_ip (t : t) =
+  match Actaa.Gen_server.call t `DiscoverIP with `DiscoverIP r -> r
