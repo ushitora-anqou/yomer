@@ -24,7 +24,7 @@ type state = { m : Hmap.t; died : ProcessSet.t (* FIXME: inefficient *) }
 
 class t =
   object (self)
-    inherit [init_arg, msg, state] Gen_server.t
+    inherit [init_arg, msg, state] Gen_server.behaviour
 
     method private init _env ~sw:_ _ =
       { m = Hmap.empty; died = ProcessSet.empty }
@@ -60,6 +60,7 @@ class t =
           `NoReply { state with died = ProcessSet.add p state.died }
   end
 
+let _ = (new t :> _ Gen_server.t)
 let create_key () = Hmap.Key.create ()
 
 let register (s : t) k v =

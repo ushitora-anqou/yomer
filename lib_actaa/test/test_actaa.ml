@@ -119,6 +119,24 @@ let test_actaa_supervisor () =
   spawn env ~sw () (new p7);
   ()
 
+module Gen_server_case0 = struct
+  type init_arg = unit
+  type call_msg = |
+  type call_reply = |
+  type cast_msg = |
+  type state = unit
+  type basic_msg = (call_msg, call_reply, cast_msg) Gen_server.basic_msg
+  type msg = basic_msg
+
+  class t =
+    object
+      inherit [init_arg, msg, state] Gen_server.behaviour
+      method private init _env ~sw:_ () = ()
+    end
+
+  let _ = (new t :> _ Gen_server.t)
+end
+
 module Gen_server_case1 = struct
   type init_arg = unit
   type call_msg = [ `Set of int | `Get ]
@@ -130,7 +148,7 @@ module Gen_server_case1 = struct
 
   class t =
     object
-      inherit [init_arg, msg, state] Gen_server.t
+      inherit [init_arg, msg, state] Gen_server.behaviour
       method private init _env ~sw:_ () = 0
 
       method! private handle_call _env ~sw:_ x =
@@ -141,6 +159,8 @@ module Gen_server_case1 = struct
       method! private handle_info _env ~sw:_ _ =
         function #basic_msg -> assert false | `Info x -> `NoReply x
     end
+
+  let _ = (new t :> _ Gen_server.t)
 
   let get (t : t) =
     match Gen_server.call t `Get with `Get x -> x | _ -> assert false

@@ -12,7 +12,7 @@ type ('call_msg, 'call_reply, 'cast_msg) basic_msg =
   | `Call of 'call_msg * 'call_reply Eio.Stream.t
   | `Stop of Process.Stop_reason.t * unit Eio.Stream.t ]
 
-class virtual ['init_arg, 'msg, 'state] t =
+class virtual ['init_arg, 'msg, 'state] behaviour =
   object (self)
     inherit ['init_arg, 'msg] Process.t
 
@@ -78,3 +78,9 @@ let call s msg =
   Eio.Stream.take stream
 
 let cast s msg = s#send (`Cast msg)
+
+class type ['call_msg, 'call_reply, 'cast_msg] t = object
+  method send :
+    [ `Call of 'call_msg * 'call_reply Eio.Stream.t | `Cast of 'cast_msg ] ->
+    unit
+end
