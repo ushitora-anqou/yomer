@@ -19,6 +19,7 @@
   mirage-crypto-rng-eio
   pcre2
   ptime
+  table
   uuseg.string
   uutf
   yojson)

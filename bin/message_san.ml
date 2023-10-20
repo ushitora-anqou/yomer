@@ -116,7 +116,7 @@ let replace_emoji_with_name text =
   let rec aux acc = function
     | [] -> acc |> List.rev |> List.flatten
     | hd :: tl as codepoints -> (
-        match Joypixels.step codepoints with
+        match Table.Joypixels.step codepoints with
         | None -> aux ([ hd ] :: acc) tl
         | Some (name, tl) -> aux (to_codepoints name :: acc) tl)
   in
@@ -161,7 +161,7 @@ let replace_non_sjis_with_empty text =
     let e = Uutf.encoder `UTF_8 (`Buffer buf) in
     loop e codes
   in
-  text |> to_codepoints |> List.filter Shift_jis.check |> of_codepoints
+  text |> to_codepoints |> List.filter Table.Shift_jis.check |> of_codepoints
 
 let omit_if_too_long ~max_length text =
   let fold_utf8 x y = Uuseg_string.fold_utf_8 `Grapheme_cluster x y in
