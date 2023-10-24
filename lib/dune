@@ -1,2 +1,22 @@
 (library
- (name yomer))
+ (name yomer)
+ (preprocess
+  (pps ppx_deriving.make))
+ (libraries
+  actaa
+  cohttp
+  cohttp-eio
+  discord
+  eio
+  eio.core
+  eio.unix
+  fmt
+  logs
+  mirage-clock-unix
+  mirage-crypto-rng
+  pcre2
+  ptime
+  table
+  uuseg.string
+  uutf
+  yojson))

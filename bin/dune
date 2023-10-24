@@ -1,26 +1,14 @@
 (executable
  (public_name yomer)
  (name main)
- (preprocess
-  (pps ppx_deriving.make))
  (libraries
-  actaa
-  cohttp
-  cohttp-eio
   discord
   eio
   eio.core
   eio.unix
   eio_main
-  fmt
-  logs
   mirage-clock-unix
   mirage-crypto-rng
   mirage-crypto-rng-eio
-  pcre2
-  ptime
-  table
-  uuseg.string
-  uutf
-  yojson)
+  yomer)
  (flags :standard -cclib -lopus -cclib -lpcre2-8))
