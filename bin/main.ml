@@ -12,6 +12,8 @@ let parse_command s =
 
 type state = { guilds : Guild.t StringMap.t }
 
+let get_guild guild_id state = StringMap.find_opt guild_id state.guilds
+
 let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
   | Discord.Event.Dispatch (READY _) -> state
   | Dispatch (MESSAGE_CREATE msg) -> (
@@ -41,6 +43,12 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
       | _ ->
           guild |> Guild.cast_message msg;
           state)
+  | Dispatch (VOICE_STATE_UPDATE payload) ->
+      (let ( let* ) x y = Option.iter y x in
+       let* guild_id = payload.guild_id in
+       let* guild = get_guild guild_id state in
+       Guild.cast_voice_state_update payload guild);
+      state
   | VoiceReady { guild_id; _ } ->
       Logs.info (fun m -> m "Voice ready for guild %s" guild_id);
       (match StringMap.find_opt guild_id state.guilds with

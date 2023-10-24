@@ -1,3 +1,80 @@
+module StringMap = Map.Make (String)
+
+module Voice_states = struct
+  type init_arg = unit
+  type guild_id = string
+  type user_id = string
+  type call_msg = [ `Get of guild_id * user_id | `GetAll of guild_id ]
+
+  type call_reply =
+    [ `Get of Event.dispatch_voice_state_update option
+    | `GetAll of Event.dispatch_voice_state_update StringMap.t ]
+
+  type cast_msg =
+    [ `Set of guild_id * user_id * Event.dispatch_voice_state_update
+    | `SetAll of guild_id * Event.dispatch_voice_state_update list ]
+
+  type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+  type msg = basic_msg
+
+  type state = {
+    store : Event.dispatch_voice_state_update StringMap.t StringMap.t;
+  }
+
+  class t =
+    object
+      inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
+      method private init _env ~sw:_ () = { store = StringMap.empty }
+
+      method! private handle_call _env ~sw:_ state =
+        function
+        | `Get (guild_id, user_id) ->
+            let vstate =
+              let ( >>= ) = Option.bind in
+              StringMap.find_opt guild_id state.store
+              >>= StringMap.find_opt user_id
+            in
+            `Reply (`Get vstate, state)
+        | `GetAll guild_id ->
+            let result =
+              StringMap.find_opt guild_id state.store
+              |> Option.value ~default:StringMap.empty
+            in
+            `Reply (`GetAll result, state)
+
+      method! private handle_cast _env ~sw:_ state =
+        function
+        | `Set (guild_id, user_id, vstate) ->
+            let store =
+              StringMap.update guild_id
+                (function
+                  | None -> Some (StringMap.singleton user_id vstate)
+                  | Some m -> Some (StringMap.add user_id vstate m))
+                state.store
+            in
+            `NoReply { store }
+        | `SetAll (guild_id, src) ->
+            let store =
+              state.store
+              |> StringMap.update guild_id @@ function
+                 | None ->
+                     src
+                     |> List.map
+                          (fun (vstate : Event.dispatch_voice_state_update) ->
+                            (vstate.user_id, vstate))
+                     |> List.to_seq |> StringMap.of_seq |> Option.some
+                 | Some m ->
+                     src
+                     |> List.fold_left
+                          (fun m (vstate : Event.dispatch_voice_state_update) ->
+                            StringMap.add vstate.user_id vstate m)
+                          m
+                     |> Option.some
+            in
+            `NoReply { store }
+    end
+end
+
 module Make (S : sig
   type key
   type value
@@ -55,15 +132,6 @@ end
 
 module Me = Make (Me_kv)
 
-module Voice_states_kv = struct
-  type key = string (* guild_id *) * string (* user_id *)
-  type value = Voice_state.t
-
-  let compare = compare
-end
-
-module Voice_states = Make (Voice_states_kv)
-
 module Voice_value_kv = struct
   type key = string (* guild_id *)
   type value = { channel_id : string; gateway : Voice_gateway.t }
@@ -91,14 +159,6 @@ let me { me; _ } =
 
 let set_me { me; _ } user = Actaa.Gen_server.cast me (`Set ((), user))
 
-let voice_states { voice_states; _ } ~guild_id ~user_id =
-  match Actaa.Gen_server.call voice_states (`Get (guild_id, user_id)) with
-  | `Get voice_state -> voice_state
-  | _ -> assert false
-
-let set_voice_states { voice_states; _ } ~guild_id ~user_id voice_state =
-  Actaa.Gen_server.cast voice_states (`Set ((guild_id, user_id), voice_state))
-
 let voice { voice; _ } guild_id =
   match Actaa.Gen_server.call voice (`Get guild_id) with
   | `Get voice -> voice
@@ -116,3 +176,19 @@ let set_voice_if_not_exists { voice; _ } ~guild_id ~channel_id ~gateway =
   with
   | `Set x -> x
   | _ -> assert false
+
+let voice_states { voice_states; _ } ~guild_id ~user_id =
+  match Actaa.Gen_server.call voice_states (`Get (guild_id, user_id)) with
+  | `Get voice_state -> voice_state
+  | _ -> assert false
+
+let all_voice_states { voice_states; _ } ~guild_id =
+  match Actaa.Gen_server.call voice_states (`GetAll guild_id) with
+  | `GetAll voice_states -> voice_states
+  | _ -> assert false
+
+let set_voice_states { voice_states; _ } ~guild_id ~user_id voice_state =
+  Actaa.Gen_server.cast voice_states (`Set (guild_id, user_id, voice_state))
+
+let initialize_guild_voice_states { voice_states; _ } ~guild_id src =
+  Actaa.Gen_server.cast voice_states (`SetAll (guild_id, src))

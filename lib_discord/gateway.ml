@@ -118,7 +118,8 @@ class t =
           state
       | Dispatch
           (VOICE_STATE_UPDATE
-            { guild_id = Some guild_id; user_id; session_id; channel_id }) ->
+            ({ guild_id = Some guild_id; user_id; session_id; _ } as payload))
+        ->
           let self_user_id = State.me state.st |> Option.get in
           (if user_id = self_user_id.id then
              match State.voice state.st guild_id with
@@ -126,8 +127,7 @@ class t =
              | Some { gateway; _ } ->
                  Voice_gateway.attach_voice_state ~user_id ~session_id gateway);
 
-          Voice_state.make ~guild_id ?channel_id ~user_id ()
-          |> State.set_voice_states state.st ~guild_id ~user_id;
+          State.set_voice_states state.st ~guild_id ~user_id payload;
 
           state
       | Dispatch (VOICE_SERVER_UPDATE { token; guild_id; endpoint }) ->
@@ -137,17 +137,11 @@ class t =
       | Dispatch (READY { user; resume_gateway_url; session_id; _ }) ->
           State.set_me state.st user;
           { state with resume = Some (resume_gateway_url, session_id) }
-      | Dispatch (GUILD_CREATE json) -> (
-          match Guild.of_yojson json with
-          | exception _ -> state
-          | g ->
-              g.voice_states
-              |> Option.iter (fun xs ->
-                     xs
-                     |> List.iter (fun x ->
-                            State.set_voice_states state.st ~guild_id:g.id
-                              ~user_id:x.Voice_state.user_id x));
-              state)
+      | Dispatch (GUILD_CREATE { voice_states; id = guild_id; _ }) ->
+          voice_states
+          |> Option.iter
+               (State.initialize_guild_voice_states state.st ~guild_id);
+          state
       | Reconnect | InvalidSession true -> self#resume_ws env ~sw state
       | Dispatch _ | VoiceStateUpdate _ | InvalidSession false -> state
       | Identify _ | Resume _ | VoiceReady _ | VoiceSpeaking _ ->

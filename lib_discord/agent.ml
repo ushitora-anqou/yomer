@@ -1,3 +1,5 @@
+module StringMap = Map.Make (String)
+
 type join_channel = {
   self_mute : bool;
   self_deaf : bool;
@@ -15,8 +17,16 @@ type play_voice = {
 type get_voice_states = { guild_id : string; user_id : string }
 type consumer = Event.t Actaa.Gen_server.t_cast
 type init_arg = { config : Config.t; consumer : consumer }
-type call_msg = [ `GetVoiceStates of get_voice_states ]
-type call_reply = [ `GetVoiceStates of Voice_state.t option ]
+
+type call_msg =
+  [ `GetVoiceStates of get_voice_states
+  | `GetAllVoiceStates of string (* guild_id *)
+  | `Me ]
+
+type call_reply =
+  [ `GetVoiceStates of Event.dispatch_voice_state_update option
+  | `GetAllVoiceStates of Event.dispatch_voice_state_update StringMap.t
+  | `Me of Object.user option ]
 
 type cast_msg =
   [ `Event of Event.t
@@ -81,6 +91,11 @@ class t =
           `Reply
             ( `GetVoiceStates (State.voice_states state.st ~guild_id ~user_id),
               state )
+      | `GetAllVoiceStates guild_id ->
+          `Reply
+            ( `GetAllVoiceStates (State.all_voice_states state.st ~guild_id),
+              state )
+      | `Me -> `Reply (`Me (State.me state.st), state)
   end
 
 let join_channel ?(self_mute = false) ?(self_deaf = false) ~guild_id ~channel_id
@@ -94,6 +109,7 @@ let leave_channel ~guild_id (agent : t) =
 let get_voice_states ~guild_id ~user_id (agent : t) =
   match Actaa.Gen_server.call agent (`GetVoiceStates { guild_id; user_id }) with
   | `GetVoiceStates v -> v
+  | _ -> assert false
 
 let spawn_youtubedl process_mgr ~sw ~stdout url =
   let executable =
@@ -139,3 +155,11 @@ let play_voice process_mgr ~sw ~guild_id ~src (agent : t) =
       play src;
       Eio.Flow.close src;
       Eio.Flow.close sink
+
+let me (agent : t) =
+  match Actaa.Gen_server.call agent `Me with `Me v -> v | _ -> assert false
+
+let get_all_voice_states (agent : t) ~guild_id =
+  match Actaa.Gen_server.call agent (`GetAllVoiceStates guild_id) with
+  | `GetAllVoiceStates v -> v
+  | _ -> assert false

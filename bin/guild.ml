@@ -1,3 +1,5 @@
+module StringMap = Map.Make (String)
+
 type message = [ `Bare of string | `Discord of Discord.Object.message ]
 
 type init_arg = {
@@ -15,7 +17,8 @@ type cast_msg =
   | `MessageArrived of message
   | `VoiceReady
   | `VoiceSpeaking of bool
-  | `Ping of string (* channel_id *) ]
+  | `Ping of string (* channel_id *)
+  | `VoiceStateUpdateArrived of Discord.Event.dispatch_voice_state_update ]
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = basic_msg
@@ -27,6 +30,8 @@ type state = {
   agent : Discord.Agent.t;
   msg_queue : message Queue.t;
   speaking_status : speaking_status;
+  voice_states : Discord.Event.dispatch_voice_state_update StringMap.t;
+      (* user_id -> voice_state *)
 }
 
 type Actaa.Process.Stop_reason.t += Restart
@@ -45,10 +50,6 @@ let query_voice_provider env text =
     failwith
       (Printf.sprintf "Failed to get speech: %s"
          (Cohttp.Code.string_of_status status))
-
-let enqueue_message state msg =
-  let { msg_queue; _ } = state in
-  Queue.push msg msg_queue
 
 let format_discord_message (msg : Discord.Object.message) =
   (* Concat dummy to content if there are attachments *)
@@ -90,31 +91,129 @@ let start_speaking env config ~sw state msg =
        (Eio.Stdenv.process_mgr env)
        ~sw ~guild_id:state.guild_id ~src:(`Pipe src)
 
-let rec consume_message env config ~sw state =
+let rec consume_message env ~sw state =
   match Queue.take_opt state.msg_queue with
   | None -> { state with speaking_status = Ready }
   | Some msg -> (
       try
-        start_speaking env config ~sw state msg;
+        start_speaking env state.config ~sw state msg;
         { state with speaking_status = Speaking }
       with e ->
         Logs.err (fun m ->
             m "Failed to start speech: %s\n%s" (Printexc.to_string e)
               (Printexc.get_backtrace ()));
-        consume_message env config ~sw state)
+        consume_message env ~sw state)
+
+let enqueue_message env ~sw state msg =
+  match (state.speaking_status, msg) with
+  | NotReady, `Bare _ ->
+      (* Enqueue only bare messages if status is not ready
+         in order to speak out the welcome message *)
+      Queue.push msg state.msg_queue;
+      state
+  | NotReady, _ -> state
+  | Ready, _ ->
+      Queue.push msg state.msg_queue;
+      consume_message env ~sw state
+  | Speaking, _ ->
+      Queue.push msg state.msg_queue;
+      state
+
+let get_activity state (payload : Discord.Event.dispatch_voice_state_update) =
+  let ( let* ) = Option.bind in
+  let p = StringMap.find_opt payload.user_id state.voice_states in
+  let c = payload in
+  let* me = Discord.Agent.me state.agent in
+  let my_user_id = me.id in
+  let ch =
+    let* vstate =
+      state.agent
+      |> Discord.Agent.get_voice_states ~guild_id:state.guild_id
+           ~user_id:my_user_id
+    in
+    vstate.channel_id
+  in
+
+  let joining_any_channel =
+    c.channel_id <> None
+    && (p = None || (Option.get p).channel_id <> c.channel_id)
+  in
+  let joining = joining_any_channel && c.channel_id = ch in
+  let leaving =
+    p <> None && ch <> None
+    && (Option.get p).channel_id <> c.channel_id
+    && (Option.get p).channel_id = ch
+  in
+  let is_my_activity = payload.user_id = my_user_id in
+  let i'm_joining = is_my_activity && joining in
+  let i'm_leaving = is_my_activity && (leaving || ch = None) in
+
+  let start_streaming =
+    c.channel_id = ch && p <> None
+    && ((Option.get p).self_stream = None
+       || (Option.get p).self_stream = Some false)
+    && c.self_stream = Some true
+  in
+  let stop_streaming =
+    c.channel_id = ch && p <> None
+    && (Option.get p).self_stream = Some true
+    && (c.self_stream = None || c.self_stream = Some false)
+  in
+
+  if i'm_joining then Some `I'm_joining
+  else if i'm_leaving then Some `I'm_leaving
+  else if joining then Some `Someone's_joining
+  else if leaving then Some `Someone's_leaving
+  else if start_streaming then Some `Someone's_starting_streaming
+  else if stop_streaming then Some `Someone's_stopping_streaming
+  else if joining_any_channel then Some `Someone's_joining_any_channel
+  else None
+
+let update_voice_state state
+    (payload : Discord.Event.dispatch_voice_state_update) =
+  {
+    state with
+    voice_states = state.voice_states |> StringMap.add payload.user_id payload;
+  }
+
+let get_display_name : Discord.Object.guild_member -> string option = function
+  | { nick = Some nick; _ } -> Some nick
+  | { user = Some { username; _ }; _ } -> Some username
+  | _ -> None
 
 class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
     method private init _env ~sw:_ { guild_id; agent; config } =
+      let voice_states = Discord.Agent.get_all_voice_states agent ~guild_id in
       {
         config;
         guild_id;
         agent;
         msg_queue = Queue.create ();
         speaking_status = NotReady;
+        voice_states;
       }
+
+    method private handle_activity env ~sw state
+        (member : Discord.Object.guild_member) activity =
+      let react f =
+        let state =
+          member |> get_display_name
+          |> Option.fold ~none:state ~some:(fun display_name ->
+                 enqueue_message env ~sw state (`Bare (f display_name)))
+        in
+        `NoReply state
+      in
+      match activity with
+      | `Someone's_joining -> react (Printf.sprintf "%sさんが参加しました。")
+      | `Someone's_leaving -> react (Printf.sprintf "%sさんが離れました。")
+      | `Someone's_starting_streaming ->
+          react (Printf.sprintf "%sさんがライブを始めました。")
+      | `Someone's_stopping_streaming ->
+          react (Printf.sprintf "%sさんがライブを終了しました。")
+      | _ -> `NoReply state
 
     method private handle_status env ~sw state
         : speaking_status * cast_msg -> state Actaa.Gen_server.cast_result =
@@ -124,10 +223,12 @@ class t =
        *)
       | NotReady, `MessageArrived (`Bare _ as msg) ->
           (* Enqueue only bare messages to speak out the welcome message *)
-          enqueue_message state msg;
+          let state = enqueue_message env ~sw state msg in
           `NoReply state
       | NotReady, `MessageArrived _ -> (* Just ignore *) `NoReply state
-      | NotReady, `VoiceReady -> `NoReply { state with speaking_status = Ready }
+      | NotReady, `VoiceReady ->
+          let state = consume_message env ~sw state in
+          `NoReply state
       | NotReady, `VoiceSpeaking _ ->
           (* invalid state *)
           Logs.warn (fun m ->
@@ -141,8 +242,7 @@ class t =
        *)
       | Ready, `VoiceReady -> (* Just ignore *) `NoReply state
       | Ready, `MessageArrived msg ->
-          enqueue_message state msg;
-          let state = consume_message env state.config ~sw state in
+          let state = enqueue_message env ~sw state msg in
           `NoReply state
       | Ready, `VoiceSpeaking _ ->
           (* invalid state *)
@@ -156,14 +256,21 @@ class t =
       | Speaking, `VoiceReady | Speaking, `VoiceSpeaking true ->
           (* Just ignore *) `NoReply state
       | Speaking, `MessageArrived msg ->
-          enqueue_message state msg;
+          let state = enqueue_message env ~sw state msg in
           `NoReply state
       | Speaking, `VoiceSpeaking false ->
-          let state = consume_message env state.config ~sw state in
+          let state = consume_message env ~sw state in
           `NoReply state
       (*
        * misc
        *)
+      | _, `VoiceStateUpdateArrived payload -> (
+          let activity = get_activity state payload in
+          let state = update_voice_state state payload in
+          match (activity, payload.member) with
+          | None, _ | _, None -> `NoReply state
+          | Some activity, Some member ->
+              self#handle_activity env ~sw state member activity)
       | _, (`JoinByMessage _ | `LeaveByMessage _ | `Ping _) ->
           failwith "invalid state"
 
@@ -174,7 +281,7 @@ class t =
           let ( >>= ) = Option.bind in
           agent
           |> Discord.Agent.get_voice_states ~guild_id ~user_id:msg.author.id
-          >>= (fun vstate -> vstate.Discord.Voice_state.channel_id)
+          >>= (fun vstate -> vstate.channel_id)
           |> Option.iter (fun channel_id ->
                  agent |> Discord.Agent.join_channel ~guild_id ~channel_id);
           `NoReply state
@@ -215,3 +322,6 @@ let cast_voice_speaking speaking t =
   Actaa.Gen_server.cast t (`VoiceSpeaking speaking)
 
 let ping channel_id t = Actaa.Gen_server.cast t (`Ping channel_id)
+
+let cast_voice_state_update payload t =
+  Actaa.Gen_server.cast t (`VoiceStateUpdateArrived payload)

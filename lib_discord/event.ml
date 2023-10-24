@@ -19,16 +19,24 @@ type dispatch_voice_server_update = {
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
 type dispatch_voice_state_update = {
-  guild_id : string option;
+  guild_id : string option; [@yojson.option]
   channel_id : string option;
   user_id : string;
   session_id : string;
+  member : Object.guild_member option; [@yojson.option]
+  self_stream : bool option; [@yojson.option]
+}
+[@@yojson.allow_extra_fields] [@@deriving yojson, show]
+
+type dispatch_guild_create = {
+  id : string;
+  voice_states : dispatch_voice_state_update list option; [@yojson.option]
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
 type dispatch =
   | READY of dispatch_ready
-  | GUILD_CREATE of json_any
+  | GUILD_CREATE of dispatch_guild_create
   | MESSAGE_CREATE of Object.message
   | VOICE_STATE_UPDATE of dispatch_voice_state_update
   | VOICE_SERVER_UPDATE of dispatch_voice_server_update
