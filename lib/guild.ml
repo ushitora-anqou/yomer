@@ -1,6 +1,7 @@
 open Util
 
-type message = [ `Bare of string | `Discord of Discord.Object.message ]
+type normal_message = [ `Bare of string | `Discord of Discord.Object.message ]
+type message = [ normal_message | `ScheduledLeave ]
 
 type init_arg = {
   guild_id : string;
@@ -94,7 +95,10 @@ let start_speaking env config ~sw state msg =
 let rec consume_message env ~sw state =
   match Queue.take_opt state.msg_queue with
   | None -> { state with speaking_status = Ready }
-  | Some msg -> (
+  | Some `ScheduledLeave ->
+      state.agent |> Discord.Agent.leave_channel ~guild_id:state.guild_id;
+      { state with speaking_status = NotReady; msg_queue = Queue.create () }
+  | Some (#normal_message as msg) -> (
       try
         start_speaking env state.config ~sw state msg;
         { state with speaking_status = Speaking }
@@ -180,6 +184,17 @@ let get_display_name : Discord.Object.guild_member -> string option = function
   | { nick = Some nick; _ } -> Some nick
   | { user = Some { username; _ }; _ } -> Some username
   | _ -> None
+
+let get_voice_channel_from_user_id ~guild_id ~user_id agent =
+  Option.bind
+    (agent |> Discord.Agent.get_voice_states ~guild_id ~user_id)
+    (fun x -> x.channel_id)
+
+let send_message env config ~channel_id ~content =
+  Discord.Rest.make_create_message_param
+    ~embeds:[ Discord.Object.make_embed ~description:content () ]
+    ()
+  |> Discord.Rest.create_message env config channel_id
 
 class t =
   object (self)
@@ -277,23 +292,39 @@ class t =
 
     method! private handle_cast env ~sw state msg =
       let { agent; guild_id; speaking_status; _ } = state in
+      let ( >>= ) = Option.bind in
+      let ( let* ) = ( >>= ) in
       match msg with
       | `JoinByMessage msg ->
-          let ( >>= ) = Option.bind in
           agent
           |> Discord.Agent.get_voice_states ~guild_id ~user_id:msg.author.id
           >>= (fun vstate -> vstate.channel_id)
           |> Option.iter (fun channel_id ->
                  agent |> Discord.Agent.join_channel ~guild_id ~channel_id);
           `NoReply state
-      | `LeaveByMessage _msg ->
-          agent |> Discord.Agent.leave_channel ~guild_id;
-          `NoReply
-            {
-              state with
-              speaking_status = NotReady;
-              msg_queue = Queue.create ();
-            }
+      | `LeaveByMessage msg ->
+          let user_vc_id =
+            agent
+            |> get_voice_channel_from_user_id ~guild_id ~user_id:msg.author.id
+          in
+          let my_vc_id =
+            let* user = Discord.Agent.me agent in
+            let* vstate =
+              agent |> Discord.Agent.get_voice_states ~guild_id ~user_id:user.id
+            in
+            vstate.channel_id
+          in
+          if user_vc_id = my_vc_id then
+            let state =
+              enqueue_message env ~sw state (`Bare "。お相手はyomerでした。またね。")
+            in
+            let state = enqueue_message env ~sw state `ScheduledLeave in
+            `NoReply state
+          else (
+            send_message env state.config ~channel_id:msg.channel_id
+              ~content:"同じボイスチャネルから呼んでください。"
+            |> ignore;
+            `NoReply state)
       | `Ping channel_id ->
           if
             Discord.Rest.make_create_message_param
