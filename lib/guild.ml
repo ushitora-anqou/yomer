@@ -207,13 +207,14 @@ class t =
         `NoReply state
       in
       match activity with
+      | `I'm_joining -> react (fun _ -> "こんにちは、yomerです。やさしくしてね。")
       | `Someone's_joining -> react (Printf.sprintf "%sさんが参加しました。")
       | `Someone's_leaving -> react (Printf.sprintf "%sさんが離れました。")
       | `Someone's_starting_streaming ->
           react (Printf.sprintf "%sさんがライブを始めました。")
       | `Someone's_stopping_streaming ->
           react (Printf.sprintf "%sさんがライブを終了しました。")
-      | _ -> `NoReply state
+      | `I'm_leaving | `Someone's_joining_any_channel -> `NoReply state
 
     method private handle_status env ~sw state
         : speaking_status * cast_msg -> state Actaa.Gen_server.cast_result =
