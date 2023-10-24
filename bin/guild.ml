@@ -1,4 +1,4 @@
-module StringMap = Map.Make (String)
+open Util
 
 type message = [ `Bare of string | `Discord of Discord.Object.message ]
 

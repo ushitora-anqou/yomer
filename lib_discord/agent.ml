@@ -1,4 +1,4 @@
-module StringMap = Map.Make (String)
+open Util
 
 type join_channel = {
   self_mute : bool;

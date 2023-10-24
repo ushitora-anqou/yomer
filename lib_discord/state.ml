@@ -1,4 +1,4 @@
-module StringMap = Map.Make (String)
+open Util
 
 module Voice_states = struct
   type init_arg = unit

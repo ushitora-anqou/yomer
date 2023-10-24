@@ -1,6 +1,6 @@
 [@@@warning "-32-69"]
 
-module StringMap = Map.Make (String)
+open Util
 
 let command_re = Regex.e {|^(\S+)(?:\s+(.*))?$|}
 

@@ -41,7 +41,6 @@ module Httpx = Httpx
 module Intent = Intent
 module Object = Object
 module Rest = Rest
-module StringMap = Util.StringMap
 
 let voice_frame_size = Voice_udp_stream.frame_size
 let voice_num_burst_frames = Voice_udp_stream.num_burst_frames
