@@ -40,6 +40,8 @@ type t =
   | Resume (* 7 *) of resume
   | Hello (* 8 *) of hello
   | Resumed (* 9 *)
+  | Unknown_18 (* 18 *)
+  | Unknown_20 (* 20 *)
 
 let of_yojson json =
   let open Yojson.Safe.Util in
@@ -57,6 +59,8 @@ let of_yojson json =
     | 7 -> d |> resume_of_yojson |> fun x -> Resume x
     | 8 -> d |> hello_of_yojson |> fun x -> Hello x
     | 9 -> Resumed
+    | 18 -> Unknown_18
+    | 20 -> Unknown_20
     | _ -> failwith "Invalid op"
   with Type_error _ -> failwith "Invalid JSON for event"
 
@@ -73,3 +77,4 @@ let to_yojson = function
   | Resume d -> `Assoc [ ("op", `Int 7); ("d", yojson_of_resume d) ]
   | Hello d -> `Assoc [ ("op", `Int 8); ("d", yojson_of_hello d) ]
   | Resumed -> `Assoc [ ("op", `Int 9); ("d", `Null) ]
+  | Unknown_18 | Unknown_20 -> assert false

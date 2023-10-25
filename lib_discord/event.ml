@@ -40,6 +40,7 @@ type dispatch =
   | MESSAGE_CREATE of Object.message
   | VOICE_STATE_UPDATE of dispatch_voice_state_update
   | VOICE_SERVER_UPDATE of dispatch_voice_server_update
+  | RESUMED
 [@@deriving yojson, show]
 
 type t =
