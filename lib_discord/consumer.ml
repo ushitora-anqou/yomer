@@ -7,7 +7,8 @@ type 'user_state user_handler =
   'user_state
 
 type 'user_state init_arg = {
-  config : Config.t;
+  token : string;
+  intents : int;
   user_init : unit -> 'user_state;
   user_handler : 'user_state user_handler;
 }
@@ -29,11 +30,11 @@ class ['user_state] t =
     inherit
       ['user_state init_arg, msg, 'user_state state] Actaa.Gen_server.behaviour
 
-    method private init env ~sw { config; user_init; user_handler } =
+    method private init env ~sw { token; intents; user_init; user_handler } =
       let agent = new Agent.t in
       agent
       |> Actaa.Gen_server.start env ~sw
-           Agent.{ config; consumer = (self :> consumer) };
+           Agent.{ token; intents; consumer = (self :> consumer) };
       let user_state = user_init () in
       { agent; user_state; user_handler }
 
@@ -49,7 +50,8 @@ class ['user_state] t =
       `NoReply { state with user_state }
   end
 
-let start env ~sw config user_init user_handler =
+let start env ~sw ~token ~intents user_init user_handler =
   let t = new t in
-  t |> Actaa.Gen_server.start env ~sw { config; user_init; user_handler };
+  t
+  |> Actaa.Gen_server.start env ~sw { token; intents; user_init; user_handler };
   t

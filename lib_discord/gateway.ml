@@ -2,7 +2,14 @@ open Util
 
 type consumer_cast_msg = [ `Event of Event.t ]
 type consumer = consumer_cast_msg Actaa.Gen_server.t_cast
-type init_arg = { consumer : consumer; config : Config.t; state : State.t }
+
+type init_arg = {
+  consumer : consumer;
+  token : string;
+  intents : int;
+  state : State.t;
+}
+
 type call_msg = |
 type call_reply = |
 
@@ -22,7 +29,8 @@ type state = {
   ws_conn : Ws.conn;
   heartbeat_interval : float option;
   st : State.t;
-  config : Config.t;
+  token : string;
+  intents : int;
   resume : (string (* resume_gateway_url *) * string (* session_id *)) option;
   seq : int;
 }
@@ -71,16 +79,14 @@ class t =
 
       (* Send Resume event *)
       Event.(
-        Resume
-          { token = Config.token state.config; session_id; seq = state.seq }
-        |> to_yojson)
+        Resume { token = state.token; session_id; seq = state.seq } |> to_yojson)
       |> send_json conn;
 
       { state with ws_conn = conn }
 
-    method private init env ~sw { consumer; config; state = st } =
+    method private init env ~sw { consumer; token; intents; state = st } =
       let ws_conn = self#connect_ws env ~sw in
-      make_state ~consumer ~ws_conn ~config ~st ~seq:0 ()
+      make_state ~consumer ~ws_conn ~token ~intents ~st ~seq:0 ()
 
     method! private terminate _ ~sw:_ _state _reason = ()
 
@@ -96,8 +102,8 @@ class t =
 
           Identify
             {
-              token = Config.token state.config;
-              intents = Config.intents state.config;
+              token = state.token;
+              intents = state.intents;
               properties =
                 `Assoc
                   [
@@ -194,9 +200,9 @@ class t =
           `NoReply state
   end
 
-let spawn config env sw state consumer =
+let spawn env ~sw ~token ~intents ~state ~consumer =
   let t = new t in
-  Actaa.Gen_server.start env ~sw { config; state; consumer } t;
+  Actaa.Gen_server.start env ~sw { token; intents; state; consumer } t;
   t
 
 let send_voice_state_update ~guild_id ?channel_id ~self_mute ~self_deaf t =

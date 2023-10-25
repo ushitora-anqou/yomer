@@ -34,7 +34,6 @@
 (*open Ppx_yojson_conv_lib.Yojson_conv.Primitives*)
 
 module Agent = Agent
-module Config = Config
 module Consumer = Consumer
 module Event = Event
 module Httpx = Httpx

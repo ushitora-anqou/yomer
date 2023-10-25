@@ -195,7 +195,7 @@ class t =
 
 let create () = new t
 
-let start t _config env sw consumer ~guild_id =
+let start t env sw consumer ~guild_id =
   Actaa.Gen_server.start env ~sw { guild_id; consumer } t
 
 let attach_voice_state ~user_id ~session_id t =

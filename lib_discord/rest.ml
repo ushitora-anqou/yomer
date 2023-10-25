@@ -1,7 +1,7 @@
-let request ~meth ?body env config path =
+let request ~meth ?body env ~token path =
   let headers =
     [
-      ("authorization", "Bot " ^ config.Config.token);
+      ("authorization", "Bot " ^ token);
       ("user-agent", "DiscordBot (https://github.com/ushitora-anqou/yomer, 0.1)");
       ("content-Type", "application/json");
       ("accept", "*/*");
@@ -22,8 +22,8 @@ let request ~meth ?body env config path =
   in
   (Cohttp.Response.status (fst resp), body)
 
-let request (env : Eio_unix.Stdenv.base) config name ~meth ?body url of_yojson =
-  match request env config ~meth ?body url with
+let request (env : Eio_unix.Stdenv.base) ~token name ~meth ?body url of_yojson =
+  match request env ~token ~meth ?body url with
   | code, Some body when Cohttp.Code.(code |> code_of_status |> is_success) -> (
       Logs.info (fun m -> m "%s: %s" name (Yojson.Safe.to_string body));
       try Ok (of_yojson body)
@@ -45,28 +45,28 @@ type create_message_param = {
 }
 [@@deriving make, yojson]
 
-let create_message (env : Eio_unix.Stdenv.base) config channel_id p =
-  request env config "create_message" ~meth:`POST
+let create_message (env : Eio_unix.Stdenv.base) ~token channel_id p =
+  request env ~token "create_message" ~meth:`POST
     ~body:(yojson_of_create_message_param p)
     ("/channels/" ^ channel_id ^ "/messages")
     Object.message_of_yojson
 
-let get_user (env : Eio_unix.Stdenv.base) config ~user_id =
-  request env config __FUNCTION__ ~meth:`GET ("/users/" ^ user_id)
+let get_user (env : Eio_unix.Stdenv.base) ~token ~user_id =
+  request env ~token __FUNCTION__ ~meth:`GET ("/users/" ^ user_id)
     Object.user_of_yojson
 
-let get_guild_member (env : Eio_unix.Stdenv.base) config ~user_id ~guild_id =
-  request env config __FUNCTION__ ~meth:`GET
+let get_guild_member (env : Eio_unix.Stdenv.base) ~token ~user_id ~guild_id =
+  request env ~token __FUNCTION__ ~meth:`GET
     ("/guilds/" ^ guild_id ^ "/members/" ^ user_id)
     Object.guild_member_of_yojson
 
-let get_guild_roles (env : Eio_unix.Stdenv.base) config ~guild_id =
-  request env config __FUNCTION__ ~meth:`GET
+let get_guild_roles (env : Eio_unix.Stdenv.base) ~token ~guild_id =
+  request env ~token __FUNCTION__ ~meth:`GET
     ("/guilds/" ^ guild_id ^ "/roles")
     (fun x -> x |> Yojson.Safe.Util.to_list |> List.map Object.role_of_yojson)
 
-let get_guild_channels (env : Eio_unix.Stdenv.base) config ~guild_id =
-  request env config __FUNCTION__ ~meth:`GET
+let get_guild_channels (env : Eio_unix.Stdenv.base) ~token ~guild_id =
+  request env ~token __FUNCTION__ ~meth:`GET
     ("/guilds/" ^ guild_id ^ "/channels")
     (fun x ->
       x |> Yojson.Safe.Util.to_list |> List.map Object.channel_of_yojson)

@@ -16,7 +16,7 @@ type play_voice = {
 
 type get_voice_states = { guild_id : string; user_id : string }
 type consumer = Event.t Actaa.Gen_server.t_cast
-type init_arg = { config : Config.t; consumer : consumer }
+type init_arg = { token : string; intents : int; consumer : consumer }
 
 type call_msg =
   [ `GetVoiceStates of get_voice_states
@@ -36,25 +36,21 @@ type cast_msg =
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = basic_msg
-
-type state = {
-  config : Config.t;
-  st : State.t;
-  gw : Gateway.t;
-  consumer : consumer;
-}
+type state = { st : State.t; gw : Gateway.t; consumer : consumer }
 
 class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
-    method private init env ~sw { config; consumer } =
+    method private init env ~sw { token; intents; consumer } =
       let st = State.start env ~sw in
-      let gw = Gateway.spawn config env sw st (self :> Gateway.consumer) in
-      { config; st; gw; consumer }
+      let gw =
+        Gateway.spawn env ~sw ~token ~intents ~state:st
+          ~consumer:(self :> Gateway.consumer)
+      in
+      { st; gw; consumer }
 
-    method! private handle_cast env ~sw ({ config; st; gw; consumer } as state)
-        =
+    method! private handle_cast env ~sw ({ st; gw; consumer; _ } as state) =
       function
       | `Event ev ->
           Actaa.Gen_server.cast consumer ev;
@@ -66,7 +62,7 @@ class t =
            with
           | false, _ -> ()
           | true, _ ->
-              Voice_gateway.start vgw config env sw
+              Voice_gateway.start vgw env sw
                 (self :> Gateway.consumer)
                 ~guild_id);
           Gateway.send_voice_state_update ~guild_id ~channel_id ~self_mute

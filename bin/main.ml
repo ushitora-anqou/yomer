@@ -10,8 +10,7 @@ let () =
     Discord.Intent.encode
       [ GUILDS; GUILD_VOICE_STATES; GUILD_MESSAGES; MESSAGE_CONTENT ]
   in
-  let config = Discord.Config.make ~token ~intents in
 
   Eio_main.run @@ fun env ->
   Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env @@ fun () ->
-  Eio.Switch.run @@ fun sw -> Yomer.Consumer.start env ~sw config
+  Eio.Switch.run @@ fun sw -> Yomer.Consumer.start env ~sw ~token ~intents

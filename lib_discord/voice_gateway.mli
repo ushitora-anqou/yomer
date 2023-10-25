@@ -6,7 +6,6 @@ val create : unit -> t
 
 val start :
   t ->
-  Config.t ->
   Eio_unix.Stdenv.base ->
   Eio.Switch.t ->
   consumer ->

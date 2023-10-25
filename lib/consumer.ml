@@ -12,7 +12,7 @@ type state = { guilds : Guild.t StringMap.t }
 
 let get_guild guild_id state = StringMap.find_opt guild_id state.guilds
 
-let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
+let handle_event ~token (env : Eio_unix.Stdenv.base) ~sw agent state = function
   | Discord.Event.Dispatch (READY _) -> state
   | Dispatch (MESSAGE_CREATE msg) -> (
       let guild_id = Option.get msg.guild_id in
@@ -23,7 +23,7 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
         | Some guild -> (guild, state)
         | None ->
             let guild = Guild.create () in
-            guild |> Guild.start env ~sw ~guild_id ~agent ~config;
+            guild |> Guild.start env ~sw ~guild_id ~agent ~token;
             (guild, { guilds = state.guilds |> StringMap.add guild_id guild })
       in
 
@@ -60,10 +60,10 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
       state
   | _ -> state
 
-let start env ~sw config =
-  let _consumer =
-    Discord.Consumer.start env ~sw config
+let start env ~sw ~token ~intents =
+  let _consumer : _ Discord.Consumer.t =
+    Discord.Consumer.start env ~sw ~token ~intents
       (fun () -> { guilds = StringMap.empty })
-      (handle_event config)
+      (handle_event ~token)
   in
   ()

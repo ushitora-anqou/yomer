@@ -2,13 +2,7 @@ open Util
 
 type normal_message = [ `Bare of string | `Discord of Discord.Object.message ]
 type message = [ normal_message | `ScheduledLeave ]
-
-type init_arg = {
-  guild_id : string;
-  agent : Discord.Agent.t;
-  config : Discord.Config.t;
-}
-
+type init_arg = { guild_id : string; agent : Discord.Agent.t; token : string }
 type call_msg = |
 type call_reply = |
 
@@ -26,7 +20,7 @@ type msg = basic_msg
 type speaking_status = NotReady | Ready | Speaking
 
 type state = {
-  config : Discord.Config.t;
+  token : string;
   guild_id : string;
   agent : Discord.Agent.t;
   msg_queue : message Queue.t;
@@ -71,7 +65,7 @@ let format_discord_message (msg : Discord.Object.message) =
 
   (content, msg.author.id)
 
-let start_speaking env config ~sw state msg =
+let start_speaking env ~sw ~token state msg =
   let content, _user_id =
     match msg with
     | `Bare content -> (content, None)
@@ -80,7 +74,7 @@ let start_speaking env config ~sw state msg =
         (content, Some user_id)
   in
   let content =
-    Message_san.sanitize env config ~guild_id:state.guild_id ~text:content
+    Message_san.sanitize env ~token ~guild_id:state.guild_id ~text:content
   in
   if content = "" then failwith "sanitized message is empty";
 
@@ -100,7 +94,7 @@ let rec consume_message env ~sw state =
       { state with speaking_status = NotReady; msg_queue = Queue.create () }
   | Some (#normal_message as msg) -> (
       try
-        start_speaking env state.config ~sw state msg;
+        start_speaking env ~sw ~token:state.token state msg;
         { state with speaking_status = Speaking }
       with e ->
         Logs.err (fun m ->
@@ -190,20 +184,20 @@ let get_voice_channel_from_user_id ~guild_id ~user_id agent =
     (agent |> Discord.Agent.get_voice_states ~guild_id ~user_id)
     (fun x -> x.channel_id)
 
-let send_message env config ~channel_id ~content =
+let send_message env ~token ~channel_id ~content =
   Discord.Rest.make_create_message_param
     ~embeds:[ Discord.Object.make_embed ~description:content () ]
     ()
-  |> Discord.Rest.create_message env config channel_id
+  |> Discord.Rest.create_message env ~token channel_id
 
 class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
-    method private init _env ~sw:_ { guild_id; agent; config } =
+    method private init _env ~sw:_ { guild_id; agent; token; _ } =
       let voice_states = Discord.Agent.get_all_voice_states agent ~guild_id in
       {
-        config;
+        token;
         guild_id;
         agent;
         msg_queue = Queue.create ();
@@ -321,7 +315,7 @@ class t =
             let state = enqueue_message env ~sw state `ScheduledLeave in
             `NoReply state
           else (
-            send_message env state.config ~channel_id:msg.channel_id
+            send_message env ~token:state.token ~channel_id:msg.channel_id
               ~content:"同じボイスチャネルから呼んでください。"
             |> ignore;
             `NoReply state)
@@ -330,7 +324,7 @@ class t =
             Discord.Rest.make_create_message_param
               ~embeds:[ Discord.Object.make_embed ~description:"pong" () ]
               ()
-            |> Discord.Rest.create_message env state.config channel_id
+            |> Discord.Rest.create_message env ~token:state.token channel_id
             |> Result.is_error
           then Logs.err (fun m -> m "Failed to send pong");
           `NoReply state
@@ -339,8 +333,8 @@ class t =
 
 let create () = new t
 
-let start env ~sw ~guild_id ~agent ~config (t : t) =
-  Actaa.Gen_server.start env ~sw { guild_id; agent; config } t
+let start env ~sw ~guild_id ~agent ~token (t : t) =
+  Actaa.Gen_server.start env ~sw { guild_id; agent; token } t
 
 let join_by_message msg t = Actaa.Gen_server.cast t (`JoinByMessage msg)
 let leave_by_message msg t = Actaa.Gen_server.cast t (`LeaveByMessage msg)
