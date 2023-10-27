@@ -2,7 +2,13 @@ open Util
 
 type normal_message = [ `Bare of string | `Discord of Discord.Object.message ]
 type message = [ normal_message | `ScheduledLeave ]
-type init_arg = { guild_id : string; agent : Discord.Agent.t; token : string }
+
+type init_arg = {
+  guild_id : string;
+  agent : Discord.Agent.t;
+  config : Config.t;
+}
+
 type call_msg = |
 type call_reply = |
 
@@ -20,7 +26,7 @@ type msg = basic_msg
 type speaking_status = NotReady | Ready | Speaking
 
 type state = {
-  token : string;
+  config : Config.t;
   guild_id : string;
   agent : Discord.Agent.t;
   msg_queue : message Queue.t;
@@ -94,7 +100,7 @@ let rec consume_message env ~sw state =
       { state with speaking_status = NotReady; msg_queue = Queue.create () }
   | Some (#normal_message as msg) -> (
       try
-        start_speaking env ~sw ~token:state.token state msg;
+        start_speaking env ~sw ~token:state.config.discord_token state msg;
         { state with speaking_status = Speaking }
       with e ->
         Logs.err (fun m ->
@@ -194,10 +200,10 @@ class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
-    method private init _env ~sw:_ { guild_id; agent; token; _ } =
+    method private init _env ~sw:_ { guild_id; agent; config; _ } =
       let voice_states = Discord.Agent.get_all_voice_states agent ~guild_id in
       {
-        token;
+        config;
         guild_id;
         agent;
         msg_queue = Queue.create ();
@@ -207,6 +213,7 @@ class t =
 
     method private handle_activity env ~sw state
         (member : Discord.Object.guild_member) activity =
+      let config = state.config in
       let react f =
         let state =
           member |> get_display_name
@@ -285,7 +292,8 @@ class t =
           failwith "invalid state"
 
     method! private handle_cast env ~sw state msg =
-      let { agent; guild_id; speaking_status; _ } = state in
+      let { agent; guild_id; speaking_status; config; _ } = state in
+      let token = config.discord_token in
       let ( >>= ) = Option.bind in
       let ( let* ) = ( >>= ) in
       match msg with
@@ -315,7 +323,7 @@ class t =
             let state = enqueue_message env ~sw state `ScheduledLeave in
             `NoReply state
           else (
-            send_message env ~token:state.token ~channel_id:msg.channel_id
+            send_message env ~token ~channel_id:msg.channel_id
               ~content:"同じボイスチャネルから呼んでください。"
             |> ignore;
             `NoReply state)
@@ -324,7 +332,7 @@ class t =
             Discord.Rest.make_create_message_param
               ~embeds:[ Discord.Object.make_embed ~description:"pong" () ]
               ()
-            |> Discord.Rest.create_message env ~token:state.token channel_id
+            |> Discord.Rest.create_message env ~token channel_id
             |> Result.is_error
           then Logs.err (fun m -> m "Failed to send pong");
           `NoReply state
@@ -333,8 +341,8 @@ class t =
 
 let create () = new t
 
-let start env ~sw ~guild_id ~agent ~token (t : t) =
-  Actaa.Gen_server.start env ~sw { guild_id; agent; token } t
+let start env ~sw ~guild_id ~agent ~config (t : t) =
+  Actaa.Gen_server.start env ~sw { guild_id; agent; config } t
 
 let join_by_message msg t = Actaa.Gen_server.cast t (`JoinByMessage msg)
 let leave_by_message msg t = Actaa.Gen_server.cast t (`LeaveByMessage msg)

@@ -1,0 +1,44 @@
+discord_token: "YOUR_DISCORD_TOKEN"
+gateway_intents:
+  - "GUILDS"
+  - "GUILD_VOICE_STATES"
+  - "GUILD_MESSAGES"
+  - "MESSAGE_CONTENT"
+announcer: ["post", "http://localhost:8400"]
+dummy_message: "ちくわ大明神。"
+ffmpeg_path: "/usr/bin/ffmpeg"
+ffmpeg_options: [
+  "-i", "pipe:0",
+  "-ac", "2",
+  "-ar", "48000",
+  "-f", "s16le",
+  "-loglevel", "quiet",
+  "pipe:1"
+]
+message_length_limit: 100
+ms_before_leave: 5000
+prompt_regex: '^!ymr\s+(.+)$'
+role_to_voice:
+  - role: "結月ゆかり"
+    voice: ["post", "http://localhost:8400"]
+template_text_message:
+  summon: "{{ channel_name }}に参加します。"
+  summon_but_already_joined: "すでにボイスチャネルに参加しています。"
+  summon_not_from_vc: "ボイスチャネルに入ってから呼んでください。"
+  unsummon: "ボイスチャネルを離れます。"
+  unsummon_not_from_same_vc: "同じボイスチャネルから呼んでください。"
+  unsummon_not_joined: "まだボイスチャネルに入っていません。"
+  help: |-
+    Daidoquer2 v#{{ version }}
+
+    /join  Join the VC
+    /leave Leave the VC
+    /help  Show this help
+template_voice_message:
+  i_joined: "こんにちは、yomerです。やさしくしてね。"
+  im_leaving: "。お相手はyomerでした。またね。"
+  joined: "{{ user_name }}さんが参加しました。"
+  left: "{{ user_name }}さんが離れました。"
+  started_live: "{{ user_name }}さんがライブを始めました。"
+  stopped_live: "{{ user_name }}さんがライブを終了しました。"
+  created_thread: "{{ user_name }}さんがスレッド「{{ thread_name }}」を作りました。"

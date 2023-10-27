@@ -1,18 +1,15 @@
 open Util
 
-let command_re = Regex.e {|^(\S+)(?:\s+(.*))?$|}
-
-let parse_command s =
+let parse_command command_re s =
   let open Regex in
-  s |> match_ command_re
-  |> List.map (fun a ->
-         (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
+  s |> match_ command_re |> List.map (fun a -> a.(1) |> Option.map substr)
 
 type state = { guilds : Guild.t StringMap.t }
 
 let get_guild guild_id state = StringMap.find_opt guild_id state.guilds
 
-let handle_event ~token (env : Eio_unix.Stdenv.base) ~sw agent state = function
+let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
+    state = function
   | Discord.Event.Dispatch (READY _) -> state
   | Dispatch (MESSAGE_CREATE msg) -> (
       let guild_id = Option.get msg.guild_id in
@@ -23,19 +20,19 @@ let handle_event ~token (env : Eio_unix.Stdenv.base) ~sw agent state = function
         | Some guild -> (guild, state)
         | None ->
             let guild = Guild.create () in
-            guild |> Guild.start env ~sw ~guild_id ~agent ~token;
+            guild |> Guild.start env ~sw ~guild_id ~agent ~config;
             (guild, { guilds = state.guilds |> StringMap.add guild_id guild })
       in
 
-      match parse_command msg.content with
-      | [ (Some "!ping", None) ] ->
+      match parse_command config.prompt_regex msg.content with
+      | [ Some "ping" ] ->
           Logs.info (fun m -> m "Received ping");
           guild |> Guild.ping msg.channel_id;
           state
-      | [ (Some "!join", None) ] ->
+      | [ Some "join" ] ->
           guild |> Guild.join_by_message msg;
           state
-      | [ (Some "!leave", None) ] ->
+      | [ Some "leave" ] ->
           guild |> Guild.leave_by_message msg;
           state
       | _ ->
@@ -60,10 +57,11 @@ let handle_event ~token (env : Eio_unix.Stdenv.base) ~sw agent state = function
       state
   | _ -> state
 
-let start env ~sw ~token ~intents =
+let start env ~sw ~(config : Config.t) =
   let _consumer : _ Discord.Consumer.t =
-    Discord.Consumer.start env ~sw ~token ~intents
+    Discord.Consumer.start env ~sw ~token:config.discord_token
+      ~intents:config.gateway_intents
       (fun () -> { guilds = StringMap.empty })
-      (handle_event ~token)
+      (handle_event ~config)
   in
   ()
