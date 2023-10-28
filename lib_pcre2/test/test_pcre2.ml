@@ -72,6 +72,12 @@ let test_substitute_substrings_case1 () =
   assert (Pcre2.substitute_substrings ~rex ~subst subject = "あいぴよいぴよう");
   ()
 
+let test_pattern_info_capturecount () =
+  let pattern = "あい(うえ)お(なも)(?:a)" in
+  let rex = Pcre2.regexp pattern in
+  assert (Pcre2.capturecount rex = 2);
+  ()
+
 let () =
   Alcotest.run "pcre2"
     [
@@ -95,4 +101,9 @@ let () =
       ( "substitute_substrings",
         [ Alcotest.test_case "case1" `Quick test_substitute_substrings_case1 ]
       );
+      ( "pattern_info",
+        [
+          Alcotest.test_case "capturecount" `Quick
+            test_pattern_info_capturecount;
+        ] );
     ]

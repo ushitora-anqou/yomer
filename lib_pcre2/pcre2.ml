@@ -1,3 +1,5 @@
+exception Error of string
+
 let failwithf fmt = Format.kasprintf failwith fmt
 let invalid_argf fmt = Format.kasprintf invalid_arg fmt
 
@@ -132,6 +134,17 @@ module Low_level = struct
   let get_ovector_pointer =
     foreign "pcre2_get_ovector_pointer_8"
       (ptr match_data @-> returning (ptr size))
+
+  (*
+    int pcre2_pattern_info(
+      const pcre2 *code,
+      uint32_t what,
+      void *where
+    );
+  *)
+  let pattern_info =
+    foreign "pcre2_pattern_info_8"
+      (ptr code @-> uint32_t @-> ptr void @-> returning int)
 end
 
 let string_of_error_code errorcode =
@@ -322,3 +335,13 @@ let substitute_substrings ~rex ~subst subject =
   in
   loop 0;
   Buffer.contents buf
+
+let capturecount code =
+  let open Ctypes in
+  let what = Unsigned.UInt32.of_int 4 (* PCRE2_INFO_CAPTURECOUNT *) in
+  let buf = allocate int 0 in
+  let ret =
+    Low_level.pattern_info code what (coerce (ptr int) (ptr void) buf)
+  in
+  if ret != 0 then raise (Error __FUNCTION__);
+  !@buf
