@@ -33,6 +33,7 @@ type state = {
   intents : int;
   resume : (string (* resume_gateway_url *) * string (* session_id *)) option;
   seq : int;
+  identify_sent : bool;
 }
 [@@deriving make]
 
@@ -86,7 +87,8 @@ class t =
 
     method private init env ~sw { consumer; token; intents; state = st } =
       let ws_conn = self#connect_ws env ~sw in
-      make_state ~consumer ~ws_conn ~token ~intents ~st ~seq:0 ()
+      make_state ~consumer ~ws_conn ~token ~intents ~st ~seq:0
+        ~identify_sent:false ()
 
     method! private terminate _ ~sw:_ _state _reason = ()
 
@@ -100,21 +102,26 @@ class t =
               ~target:(self :> _ Actaa.Timer.receiver)
             |> ignore;
 
-          Identify
-            {
-              token = state.token;
-              intents = state.intents;
-              properties =
-                `Assoc
-                  [
-                    ("os", `String "linux");
-                    ("browser", `String "yomer");
-                    ("device", `String "yomer");
-                  ];
-            }
-          |> to_yojson |> send_json state.ws_conn;
+          if not state.identify_sent then
+            Identify
+              {
+                token = state.token;
+                intents = state.intents;
+                properties =
+                  `Assoc
+                    [
+                      ("os", `String "linux");
+                      ("browser", `String "yomer");
+                      ("device", `String "yomer");
+                    ];
+              }
+            |> to_yojson |> send_json state.ws_conn;
 
-          { state with heartbeat_interval = Some interval }
+          {
+            state with
+            heartbeat_interval = Some interval;
+            identify_sent = true;
+          }
       | HeartbeatAck ->
           (* FIXME: check if HeartbeatAck is correctly received *)
           Logs.info (fun m -> m "Heartbeat acked");
