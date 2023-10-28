@@ -298,13 +298,20 @@ class t =
       let ( >>= ) = Option.bind in
       let ( let* ) = ( >>= ) in
       match msg with
-      | `JoinByMessage msg ->
-          agent
-          |> Discord.Agent.get_voice_states ~guild_id ~user_id:msg.author.id
-          >>= (fun vstate -> vstate.channel_id)
-          |> Option.iter (fun channel_id ->
-                 agent |> Discord.Agent.join_channel ~guild_id ~channel_id);
-          `NoReply state
+      | `JoinByMessage msg -> (
+          match
+            agent
+            |> Discord.Agent.get_voice_states ~guild_id ~user_id:msg.author.id
+            >>= fun vstate -> vstate.channel_id
+          with
+          | None ->
+              send_message env ~token ~channel_id:msg.channel_id
+                ~content:config.template_text_message.summon_not_from_vc
+              |> ignore;
+              `NoReply state
+          | Some channel_id ->
+              agent |> Discord.Agent.join_channel ~guild_id ~channel_id;
+              `NoReply state)
       | `LeaveByMessage msg ->
           let user_vc_id =
             agent
