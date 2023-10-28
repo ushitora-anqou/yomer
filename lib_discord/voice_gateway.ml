@@ -123,7 +123,7 @@ class t =
           state
       | Identify _ | SelectProtocol _ | Speaking _ | Resume _ | Heartbeat _ ->
           failwith "Unexpected event"
-      | Unknown_18 | Unknown_20 -> state
+      | Unknown_13 | Unknown_18 | Unknown_20 -> state
 
     method! private handle_info env ~sw state =
       function
