@@ -209,7 +209,9 @@ let int_of_cflag : cflag -> int = function
 
 let cflags flags = List.fold_left (fun acc f -> acc lor int_of_cflag f) 0 flags
 
-let regexp ?(flags = []) ptn =
+type regexp = Low_level.code Ctypes_static.ptr
+
+let regexp ?(flags = []) ptn : regexp =
   let open Ctypes in
   let length = String.length ptn |> Unsigned.Size_t.of_int in
   let options = cflags flags |> Unsigned.UInt32.of_int in
