@@ -34,13 +34,21 @@ type dispatch_guild_create = {
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
+type dispatch_voice_channel_status_update = { guild_id : string }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show]
+
+type dispatch_channel_topic_update = { guild_id : string }
+[@@yojson.allow_extra_fields] [@@deriving yojson, show]
+
 type dispatch =
-  | READY of dispatch_ready
+  | CHANNEL_TOPIC_UPDATE of dispatch_channel_topic_update
   | GUILD_CREATE of dispatch_guild_create
   | MESSAGE_CREATE of Object.message
-  | VOICE_STATE_UPDATE of dispatch_voice_state_update
-  | VOICE_SERVER_UPDATE of dispatch_voice_server_update
+  | READY of dispatch_ready
   | RESUMED
+  | VOICE_CHANNEL_STATUS_UPDATE of dispatch_voice_channel_status_update
+  | VOICE_SERVER_UPDATE of dispatch_voice_server_update
+  | VOICE_STATE_UPDATE of dispatch_voice_state_update
 [@@deriving yojson, show]
 
 type t =
