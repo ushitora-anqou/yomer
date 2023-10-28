@@ -37,13 +37,10 @@ type state = {
 
 type Actaa.Process.Stop_reason.t += Restart
 
-let voice_provider_endpoint = "http://localhost:8400"
-
-let query_voice_provider env text =
+let query_voice_provider env ~provider ~text =
+  let endpoint = match provider with Config.Post url -> url in
   Eio.Switch.run @@ fun sw ->
-  let resp =
-    Discord.Httpx.post env ~sw ~body:(`Fixed text) voice_provider_endpoint
-  in
+  let resp = Discord.Httpx.post env ~sw ~body:(`Fixed text) endpoint in
   let status = fst resp |> Http.Response.status in
   if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
     Cohttp_eio.Client.read_fixed resp
@@ -85,7 +82,9 @@ let start_speaking env ~sw ~token state msg =
   if content = "" then failwith "sanitized message is empty";
 
   Logs.info (fun m -> m "Speaking: %s: %s" state.guild_id content);
-  let wav = query_voice_provider env content in
+  let wav =
+    query_voice_provider env ~provider:state.config.announcer ~text:content
+  in
   let src = Eio.Flow.string_source wav in
   state.agent
   |> Discord.Agent.play_voice
@@ -213,23 +212,25 @@ class t =
 
     method private handle_activity env ~sw state
         (member : Discord.Object.guild_member) activity =
-      let config = state.config in
-      let react f =
+      let react tmpl =
         let state =
           member |> get_display_name
           |> Option.fold ~none:state ~some:(fun display_name ->
-                 enqueue_message env ~sw state (`Bare (f display_name)))
+                 let models =
+                   [ ("user_name", Jingoo.Jg_types.Tstr display_name) ]
+                 in
+                 let msg = Jingoo.Jg_template.from_string ~models tmpl in
+                 enqueue_message env ~sw state (`Bare msg))
         in
         `NoReply state
       in
+      let tmpl = state.config.template_voice_message in
       match activity with
-      | `I'm_joining -> react (fun _ -> "こんにちは、yomerです。やさしくしてね。")
-      | `Someone's_joining -> react (Printf.sprintf "%sさんが参加しました。")
-      | `Someone's_leaving -> react (Printf.sprintf "%sさんが離れました。")
-      | `Someone's_starting_streaming ->
-          react (Printf.sprintf "%sさんがライブを始めました。")
-      | `Someone's_stopping_streaming ->
-          react (Printf.sprintf "%sさんがライブを終了しました。")
+      | `I'm_joining -> react tmpl.i_joined
+      | `Someone's_joining -> react tmpl.joined
+      | `Someone's_leaving -> react tmpl.left
+      | `Someone's_starting_streaming -> react tmpl.started_live
+      | `Someone's_stopping_streaming -> react tmpl.stopped_live
       | `I'm_leaving | `Someone's_joining_any_channel -> `NoReply state
 
     method private handle_status env ~sw state
@@ -318,13 +319,14 @@ class t =
           in
           if user_vc_id = my_vc_id then
             let state =
-              enqueue_message env ~sw state (`Bare "。お相手はyomerでした。またね。")
+              enqueue_message env ~sw state
+                (`Bare config.template_voice_message.im_leaving)
             in
             let state = enqueue_message env ~sw state `ScheduledLeave in
             `NoReply state
           else (
             send_message env ~token ~channel_id:msg.channel_id
-              ~content:"同じボイスチャネルから呼んでください。"
+              ~content:config.template_text_message.unsummon_not_from_same_vc
             |> ignore;
             `NoReply state)
       | `Ping channel_id ->

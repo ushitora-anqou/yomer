@@ -11,6 +11,7 @@
   eio.core
   eio.unix
   fmt
+  jingoo
   logs
   mirage-clock-unix
   mirage-crypto-rng

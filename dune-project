@@ -30,6 +30,7 @@
    (>= 6.0.0~alpha2))
   (eio_main
    (<= 0.11))
+  jingoo
   (ocaml
    (>= 5.0.0)))
  (tags (discord)))
