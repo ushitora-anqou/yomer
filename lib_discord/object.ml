@@ -38,10 +38,14 @@ type message = {
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
 
-type guild_member = { nick : string option; user : user option }
+type role = { id : string; name : string }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
 
-type role = { id : string; name : string }
+type guild_member = {
+  nick : string option;
+  user : user option;
+  roles : string list;
+}
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
 
 type channel = { id : string; name : string option }

@@ -36,7 +36,7 @@ type t = {
   message_length_limit : int;
   ms_before_leave : int;
   prompt_regex : Pcre2.regexp;
-  role_to_voice : role_voice list;
+  role_to_voice : role_voice array;
   template_text_message : template_text_message;
   template_voice_message : template_voice_message;
   su_shiki_com_api_key : string option;
@@ -152,6 +152,7 @@ let of_yaml root =
              let role = x |> member "role" |> to_string_exn in
              let voice = x |> member "voice" |> to_voice_exn in
              { role; voice })
+      |> Array.of_list
     in
     let template_text_message =
       try_ "template_text_message" @@ fun n ->

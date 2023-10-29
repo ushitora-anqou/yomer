@@ -90,30 +90,62 @@ let format_discord_message (msg : Discord.Object.message) =
          content
   in
 
-  (content, msg.author.id)
+  content
 
 let start_speaking env ~sw ~token state msg =
-  let content, _user_id =
-    match msg with
-    | `Bare content -> (content, None)
-    | `Discord msg ->
-        let content, user_id = format_discord_message msg in
-        (content, Some user_id)
-  in
+  let guild_id = state.guild_id in
+
   let content =
-    Message_san.sanitize env ~token ~guild_id:state.guild_id ~text:content
+    match msg with
+    | `Bare content -> content
+    | `Discord msg ->
+        let content = format_discord_message msg in
+        content
   in
+  let content = Message_san.sanitize env ~token ~guild_id ~text:content in
   if content = "" then failwith "sanitized message is empty";
 
-  Logs.info (fun m -> m "Speaking: %s: %s" state.guild_id content);
+  let provider =
+    match msg with
+    | `Bare _ -> state.config.announcer
+    | `Discord (msg : Discord.Object.message) -> (
+        let id_to_role =
+          Discord.Rest.get_guild_roles env ~token ~guild_id
+          |> Result.get_ok
+          |> List.map (fun (r : Discord.Object.role) -> (r.id, r))
+          |> List.to_seq |> StringMap.of_seq
+        in
+        let member =
+          Discord.Rest.get_guild_member env ~token ~user_id:msg.author.id
+            ~guild_id
+          |> Result.get_ok
+        in
+        match
+          member.roles
+          |> List.find_map (fun (role_id : string) ->
+                 let r = id_to_role |> StringMap.find role_id in
+                 state.config.role_to_voice
+                 |> Array.find_map (fun (r' : Config.role_voice) ->
+                        if r.name = r'.role then Some r'.voice else None))
+        with
+        | Some voice -> voice
+        | None ->
+            (* The author doesn't have any role for voice, so select one based on their id *)
+            let num_roles = Array.length state.config.role_to_voice in
+            let index = int_of_string msg.author.id mod num_roles in
+            state.config.role_to_voice.(index).voice)
+  in
+
+  Logs.info (fun m ->
+      m "Speaking: %s: %s: %s" guild_id (Config.show_voice provider) content);
   let wav =
-    query_voice_provider env ~provider:state.config.announcer ~text:content
+    query_voice_provider env ~config:state.config ~provider ~text:content
   in
   let src = Eio.Flow.string_source wav in
   state.agent
   |> Discord.Agent.play_voice
        (Eio.Stdenv.process_mgr env)
-       ~sw ~guild_id:state.guild_id ~src:(`Pipe src)
+       ~sw ~guild_id ~src:(`Pipe src)
 
 let rec consume_message env ~sw state =
   match Queue.take_opt state.msg_queue with
