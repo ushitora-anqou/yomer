@@ -191,6 +191,54 @@ module Gen_server_case1 = struct
     ()
 end
 
+module Registry_case1 = struct
+  module R = Registry.Make (struct
+    type key = string
+    type msg = unit
+
+    let compare = String.compare
+  end)
+
+  class p1 =
+    object (self)
+      inherit [R.t, unit] Process.t
+
+      method on_spawn _env ~sw:_ reg =
+        assert (R.register reg "foo" (self :> _ Process.t2));
+        assert (not (R.register reg "foo" (self :> _ Process.t2)));
+        let () = self#receive in
+        Process.Stop_reason.Normal
+    end
+
+  class p2 =
+    object
+      inherit [unit, unit] Process.t
+
+      method on_spawn env ~sw () =
+        let reg = new R.t in
+        spawn env ~sw () reg;
+        spawn env ~sw reg (new p1);
+        let rec loop () =
+          match R.lookup reg "foo" with
+          | Some p -> Process.send p ()
+          | None -> loop ()
+        in
+        loop ();
+        let rec loop () =
+          match R.lookup reg "foo" with Some _ -> loop () | None -> ()
+        in
+        loop ();
+        R.stop reg;
+        Process.Stop_reason.Normal
+    end
+
+  let test () =
+    Eio_main.run @@ fun env ->
+    Eio.Switch.run @@ fun sw ->
+    spawn env ~sw () (new p2);
+    ()
+end
+
 let () =
   Process.setup @@ fun () ->
   Alcotest.run "actaa"
@@ -202,4 +250,5 @@ let () =
           Alcotest.test_case "supervisor" `Quick test_actaa_supervisor;
         ] );
       ("gen_server", [ Alcotest.test_case "case1" `Quick Gen_server_case1.test ]);
+      ("registry", [ Alcotest.test_case "case1" `Quick Registry_case1.test ]);
     ]
