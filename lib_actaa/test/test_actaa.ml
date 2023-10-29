@@ -36,11 +36,11 @@ let test_actaa_process () =
 
 class p3 =
   object (self)
-    inherit [Registry.t * unit Registry.key, unit] Process.t
+    inherit [Pregistry.t * unit Pregistry.key, unit] Process.t
 
     method on_spawn _env ~sw:_ (reg, key) =
-      assert (Registry.register reg key (self :> _ Process.t2));
-      assert (not (Registry.register reg key (self :> _ Process.t2)));
+      assert (Pregistry.register reg key (self :> _ Process.t2));
+      assert (not (Pregistry.register reg key (self :> _ Process.t2)));
       let () = self#receive in
       Process.Stop_reason.Normal
   end
@@ -50,19 +50,19 @@ class p4 =
     inherit [unit, unit] Process.t
 
     method on_spawn env ~sw () =
-      let reg = new Registry.t in
+      let reg = new Pregistry.t in
       spawn env ~sw () reg;
-      let key = Registry.create_key () in
+      let key = Pregistry.create_key () in
       spawn env ~sw (reg, key) (new p3);
-      let rec loop () = if Registry.send reg key () then () else loop () in
+      let rec loop () = if Pregistry.send reg key () then () else loop () in
       loop ();
-      let rec loop () = if Registry.send reg key () then loop () else () in
+      let rec loop () = if Pregistry.send reg key () then loop () else () in
       loop ();
-      Registry.stop reg;
+      Pregistry.stop reg;
       Process.Stop_reason.Normal
   end
 
-let test_actaa_registry () =
+let test_actaa_pregistry () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   spawn env ~sw () (new p4);
@@ -70,10 +70,10 @@ let test_actaa_registry () =
 
 class p5 =
   object (self)
-    inherit [Registry.t * int Registry.key, int] Process.t
+    inherit [Pregistry.t * int Pregistry.key, int] Process.t
 
     method on_spawn _env ~sw:_ (reg, key) =
-      assert (Registry.register reg key (self :> _ Process.t2));
+      assert (Pregistry.register reg key (self :> _ Process.t2));
       match self#receive with
       | 0 -> Process.Stop_reason.Normal
       | _ -> failwith "fail"
@@ -82,8 +82,8 @@ class p5 =
 class p6 =
   object
     inherit
-      [Registry.t * int Registry.key, Registry.t * int Registry.key, int] Supervisor
-                                                                          .t
+      [Pregistry.t * int Pregistry.key, Pregistry.t * int Pregistry.key, int] Supervisor
+                                                                              .t
 
     method init (reg, key) =
       {
@@ -99,17 +99,17 @@ class p7 =
     inherit [unit, unit] Process.t
 
     method on_spawn env ~sw () =
-      let reg = new Registry.t in
+      let reg = new Pregistry.t in
       spawn env ~sw () reg;
-      let key = Registry.create_key () in
+      let key = Pregistry.create_key () in
       spawn env ~sw (reg, key) (new p6);
-      let rec loop () = if Registry.send reg key 1 then () else loop () in
+      let rec loop () = if Pregistry.send reg key 1 then () else loop () in
       loop ();
-      let rec loop () = if Registry.send reg key 0 then () else loop () in
+      let rec loop () = if Pregistry.send reg key 0 then () else loop () in
       loop ();
-      let rec loop () = if Registry.send reg key 0 then loop () else () in
+      let rec loop () = if Pregistry.send reg key 0 then loop () else () in
       loop ();
-      Registry.stop reg;
+      Pregistry.stop reg;
       Process.Stop_reason.Normal
   end
 
@@ -198,7 +198,7 @@ let () =
       ( "actaa",
         [
           Alcotest.test_case "process" `Quick test_actaa_process;
-          Alcotest.test_case "registry" `Quick test_actaa_registry;
+          Alcotest.test_case "pregistry" `Quick test_actaa_pregistry;
           Alcotest.test_case "supervisor" `Quick test_actaa_supervisor;
         ] );
       ("gen_server", [ Alcotest.test_case "case1" `Quick Gen_server_case1.test ]);
