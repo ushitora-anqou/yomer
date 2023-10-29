@@ -67,16 +67,11 @@ class virtual ['init_arg, 'msg] t =
 
       Eio.Fiber.fork ~sw @@ fun () ->
       let reason =
-        try
-          Eio.Switch.run (fun sw ->
-              let reason = self#on_spawn env ~sw args in
-              raise (Stop reason))
-        with
-        | Stop reason -> reason
-        | e ->
-            Stop_reason.Exn
-              (Printf.sprintf "exception: %s\n%s" (Printexc.to_string e)
-                 (Printexc.get_backtrace ()))
+        try self#on_spawn env ~sw args
+        with e ->
+          Stop_reason.Exn
+            (Printf.sprintf "exception: %s\n%s" (Printexc.to_string e)
+               (Printexc.get_backtrace ()))
       in
       Logs.info (fun m ->
           m "process stopped: %s: spawned with trace\n%s"
