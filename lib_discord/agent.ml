@@ -57,26 +57,20 @@ class t =
           `NoReply state
       | `JoinChannel { self_mute; self_deaf; guild_id; channel_id } ->
           let vgw = Voice_gateway.create () in
-          (match
-             State.set_voice_if_not_exists st ~guild_id ~channel_id ~gateway:vgw
-           with
-          | false, _ -> ()
-          | true, _ ->
-              Voice_gateway.start vgw env sw
-                (self :> Gateway.consumer)
-                ~guild_id);
+          if State.set_voice_if_not_exists st ~guild_id ~channel_id ~gateway:vgw
+          then
+            Voice_gateway.start vgw env sw (self :> Gateway.consumer) ~guild_id;
           Gateway.send_voice_state_update ~guild_id ~channel_id ~self_mute
             ~self_deaf gw;
           `NoReply state
       | `LeaveChannel { guild_id } ->
           Gateway.send_voice_state_update ~guild_id ~self_mute:false
             ~self_deaf:false gw;
-          State.unset_voice st ~guild_id;
           `NoReply state
       | `PlayVoice { guild_id; src } ->
           (match State.voice st guild_id with
           | None -> Logs.warn (fun m -> m "VoiceGateway is not available")
-          | Some { gateway; _ } -> (
+          | Some gateway -> (
               match src with
               | `FrameSource src -> Voice_gateway.send_frame_source gateway src));
           `NoReply state

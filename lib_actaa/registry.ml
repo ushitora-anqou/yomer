@@ -1,6 +1,6 @@
 module Make (S : sig
   type key
-  type msg
+  type process = private < link : Process.monitor -> unit ; .. >
 
   val compare : key -> key -> int
 end) =
@@ -18,18 +18,18 @@ struct
   end)
 
   type init_arg = unit
-  type call_msg = [ `Register of S.key * S.msg Process.t2 | `Lookup of S.key ]
+  type call_msg = [ `Register of S.key * S.process | `Lookup of S.key ]
 
   type call_reply =
     [ `Register of bool (* is correctly registered *)
-    | `Lookup of S.msg Process.t2 option ]
+    | `Lookup of S.process option ]
 
   type cast_msg = [ `Stop ]
   type info_msg = [ `EXIT of Process.t0 * Process.Stop_reason.t ]
   type msg = [ (call_msg, call_reply, cast_msg) Gen_server.basic_msg | info_msg ]
 
   type state = {
-    m : S.msg Process.t2 M.t;
+    m : S.process M.t;
     died : ProcessSet.t; (* FIXME: inefficient *)
   }
 
@@ -94,4 +94,5 @@ struct
     | _ -> assert false
 
   let stop (s : t) = Gen_server.cast s `Stop
+  let make () = new t
 end

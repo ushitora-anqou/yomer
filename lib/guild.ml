@@ -288,7 +288,15 @@ class t =
       | `Someone's_leaving -> react tmpl.left
       | `Someone's_starting_streaming -> react tmpl.started_live
       | `Someone's_stopping_streaming -> react tmpl.stopped_live
-      | `I'm_leaving | `Someone's_joining_any_channel -> `NoReply state
+      | `I'm_leaving ->
+          (* Reset speaking state *)
+          `NoReply
+            {
+              state with
+              msg_queue = Queue.create ();
+              speaking_status = NotReady;
+            }
+      | `Someone's_joining_any_channel -> `NoReply state
 
     method private handle_status env ~sw state
         : speaking_status * cast_msg -> state Actaa.Gen_server.cast_result =

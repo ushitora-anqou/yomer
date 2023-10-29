@@ -66,7 +66,7 @@ class t =
       Voice_udp_stream.close state.udp_stream;
       ()
 
-    method connect_ws env ~sw state =
+    method private connect_ws env ~sw state =
       let endpoint = (Option.get state.voice_server).endpoint in
       let conn =
         Ws.connect ~sw env ("https://" ^ endpoint ^ "/?v=4&encoding=json")
@@ -74,7 +74,7 @@ class t =
       Ws.Process.start ~sw conn (self :> _ Actaa.Process.t1);
       conn
 
-    method start_running env ~sw state =
+    method private start_running env ~sw state =
       let token = (Option.get state.voice_server).token in
       let user_id = (Option.get state.voice_state).user_id in
       let session_id = (Option.get state.voice_state).session_id in
@@ -88,7 +88,7 @@ class t =
 
       { state with status = Running; ws_conn = Some conn }
 
-    method start_running_if_ready env ~sw state =
+    method private start_running_if_ready env ~sw state =
       if
         Option.is_some state.voice_server
         && Option.is_some state.voice_state
@@ -96,7 +96,7 @@ class t =
       then self#start_running env ~sw state
       else state
 
-    method handle_voice_event env ~sw state =
+    method private handle_voice_event env ~sw state =
       function
       | Voice_event.Hello { heartbeat_interval } ->
           let interval = heartbeat_interval /. 1000.0 in

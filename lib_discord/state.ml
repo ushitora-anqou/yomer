@@ -75,6 +75,13 @@ module Voice_states = struct
     end
 end
 
+module Voice = Actaa.Registry.Make (struct
+  type key = string (* guild_id *)
+  type process = Voice_gateway.t
+
+  let compare = String.compare
+end)
+
 module Make (S : sig
   type key
   type value
@@ -132,15 +139,6 @@ end
 
 module Me = Make (Me_kv)
 
-module Voice_value_kv = struct
-  type key = string (* guild_id *)
-  type value = { channel_id : string; gateway : Voice_gateway.t }
-
-  let compare = String.compare
-end
-
-module Voice = Make (Voice_value_kv)
-
 type t = { me : Me.t; voice_states : Voice_states.t; voice : Voice.t }
 
 let start env ~sw =
@@ -160,22 +158,12 @@ let me { me; _ } =
 let set_me { me; _ } user = Actaa.Gen_server.cast me (`Set ((), user))
 
 let voice { voice; _ } guild_id =
-  match Actaa.Gen_server.call voice (`Get guild_id) with
-  | `Get voice -> voice
+  match Actaa.Gen_server.call voice (`Lookup guild_id) with
+  | `Lookup voice -> voice
   | _ -> assert false
 
-let set_voice { voice; _ } ~guild_id ~channel_id ~gateway =
-  Actaa.Gen_server.cast voice (`Set (guild_id, { channel_id; gateway }))
-
-let unset_voice { voice; _ } ~guild_id =
-  Actaa.Gen_server.cast voice (`Unset guild_id)
-
-let set_voice_if_not_exists { voice; _ } ~guild_id ~channel_id ~gateway =
-  match
-    Actaa.Gen_server.call voice (`Set (guild_id, { channel_id; gateway }))
-  with
-  | `Set x -> x
-  | _ -> assert false
+let set_voice_if_not_exists { voice; _ } ~guild_id ~channel_id:_ ~gateway =
+  Voice.register voice guild_id gateway
 
 let voice_states { voice_states; _ } ~guild_id ~user_id =
   match Actaa.Gen_server.call voice_states (`Get (guild_id, user_id)) with

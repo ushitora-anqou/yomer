@@ -61,10 +61,6 @@ class virtual ['init_arg, 'msg] t =
           Stop_reason.t
 
     method spawn ?(raise_exn = false) env ~sw args : unit =
-      (* FIXME: more reliable and fast way? *)
-      let trace = Effect.perform Trace in
-      Logs.info (fun m -> m "process started with trace\n%s" trace);
-
       Eio.Fiber.fork ~sw @@ fun () ->
       let reason =
         try self#on_spawn env ~sw args
@@ -73,15 +69,16 @@ class virtual ['init_arg, 'msg] t =
             (Printf.sprintf "exception: %s\n%s" (Printexc.to_string e)
                (Printexc.get_backtrace ()))
       in
-      Logs.info (fun m ->
-          m "process stopped: %s: spawned with trace\n%s"
-            (Stop_reason.to_string reason)
-            trace);
       Eio.Mutex.use_rw ~protect:true mtx @@ fun () ->
       links |> List.iter (fun l -> l#send (`EXIT ((self :> t0), reason)));
-      if reason <> Stop_reason.Normal && raise_exn then
-        failwith (Stop_reason.to_string reason);
-      ()
+      if reason <> Stop_reason.Normal then (
+        (* FIXME: more reliable and fast way? *)
+        let trace = Effect.perform Trace in
+        Logs.info (fun m ->
+            m "process stopped abnormally: %s: spawned with trace\n%s"
+              (Stop_reason.to_string reason)
+              trace);
+        if raise_exn then failwith (Stop_reason.to_string reason))
   end
 
 let send s msg = s#send msg
