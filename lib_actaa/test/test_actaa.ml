@@ -192,6 +192,7 @@ module Gen_server_case1 = struct
 end
 
 let () =
+  Process.setup @@ fun () ->
   Alcotest.run "actaa"
     [
       ( "actaa",

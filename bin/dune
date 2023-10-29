@@ -2,6 +2,7 @@
  (public_name yomer)
  (name main)
  (libraries
+  actaa
   discord
   eio
   eio.core

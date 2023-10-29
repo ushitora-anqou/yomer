@@ -28,6 +28,28 @@ class ['msg] t2 =
       Eio.Mutex.use_rw ~protect:true mtx @@ fun () -> links <- l :: links
   end
 
+exception Stop of Stop_reason.t
+
+type _ Effect.t += Trace : string Effect.t
+
+let setup f =
+  Effect.(
+    Deep.(
+      try_with f ()
+        {
+          effc =
+            (fun (type a) (e : a t) ->
+              match e with
+              | Trace ->
+                  Some
+                    (fun (k : (a, _) continuation) ->
+                      let bt =
+                        Printexc.raw_backtrace_to_string (get_callstack k 100)
+                      in
+                      continue k bt)
+              | _ -> None);
+        }))
+
 class virtual ['init_arg, 'msg] t =
   object (self)
     inherit ['msg] t2
@@ -39,19 +61,31 @@ class virtual ['init_arg, 'msg] t =
           Stop_reason.t
 
     method spawn ?(raise_exn = false) env ~sw args : unit =
+      (* FIXME: more reliable and fast way? *)
+      let trace = Effect.perform Trace in
+      Logs.info (fun m -> m "process started with trace\n%s" trace);
+
       Eio.Fiber.fork ~sw @@ fun () ->
       let reason =
-        try Eio.Switch.run (fun sw -> self#on_spawn env ~sw args)
-        with e ->
-          Stop_reason.Exn
-            (Printf.sprintf "exception: %s\n%s" (Printexc.to_string e)
-               (Printexc.get_backtrace ()))
+        try
+          Eio.Switch.run (fun sw ->
+              let reason = self#on_spawn env ~sw args in
+              raise (Stop reason))
+        with
+        | Stop reason -> reason
+        | e ->
+            Stop_reason.Exn
+              (Printf.sprintf "exception: %s\n%s" (Printexc.to_string e)
+                 (Printexc.get_backtrace ()))
       in
+      Logs.info (fun m ->
+          m "process stopped: %s: spawned with trace\n%s"
+            (Stop_reason.to_string reason)
+            trace);
       Eio.Mutex.use_rw ~protect:true mtx @@ fun () ->
       links |> List.iter (fun l -> l#send (`EXIT ((self :> t0), reason)));
-      if reason <> Stop_reason.Normal then (
-        Logs.err (fun m -> m "stop reason: %s" (Stop_reason.to_string reason));
-        if raise_exn then failwith (Stop_reason.to_string reason));
+      if reason <> Stop_reason.Normal && raise_exn then
+        failwith (Stop_reason.to_string reason);
       ()
   end
 

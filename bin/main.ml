@@ -20,6 +20,7 @@ let () =
   let config_path = Sys.argv.(1) in
   let config = load_config config_path in
 
+  Actaa.Process.setup @@ fun () ->
   Eio_main.run @@ fun env ->
   Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env @@ fun () ->
   Eio.Switch.run @@ fun sw -> Yomer.Consumer.start env ~sw ~config
