@@ -1,4 +1,9 @@
-type voice = Post of string (* url *)
+type voice =
+  | Post of string
+  (* `Post url` will send POST request to url *)
+  | Su_shiki_com of string (* `Su_shiki_com query` will use su-shiki.com API *)
+[@@deriving show]
+
 type role_voice = { role : string; voice : voice }
 
 type template_text_message = {
@@ -34,6 +39,7 @@ type t = {
   role_to_voice : role_voice list;
   template_text_message : template_text_message;
   template_voice_message : template_voice_message;
+  su_shiki_com_api_key : string option;
 }
 
 module P = struct
@@ -48,9 +54,15 @@ module P = struct
 
   let member name x = x |> find_exn name |> Option.get
 
+  let member_opt name x =
+    match x |> find name |> Result.to_option with
+    | Some (Some x) -> Some x
+    | _ -> None
+
   let to_voice_exn x =
     match to_list_exn x with
     | [ `String "post"; `String url ] -> Post url
+    | [ `String "su_shiki_com"; `String q ] -> Su_shiki_com q
     | _ -> failwith "invalid voice"
 
   let try_ name f =
@@ -149,6 +161,11 @@ let of_yaml root =
       try_ "template_voice_message" @@ fun n ->
       root |> member n |> template_voice_message_of_yojson
     in
+    let su_shiki_com_api_key =
+      try_ "su_shiki_com_api_key" @@ fun n ->
+      root |> member_opt n |> Option.map to_string_exn
+      (* FIXME: validate su_shiki_com_api_key is set if necessary *)
+    in
     Ok
       {
         discord_token;
@@ -163,5 +180,6 @@ let of_yaml root =
         role_to_voice;
         template_text_message;
         template_voice_message;
+        su_shiki_com_api_key;
       }
   with Failure msg -> Error (`Msg msg)

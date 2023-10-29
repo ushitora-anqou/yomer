@@ -37,17 +37,41 @@ type state = {
 
 type Actaa.Process.Stop_reason.t += Restart
 
-let query_voice_provider env ~provider ~text =
-  let endpoint = match provider with Config.Post url -> url in
-  Eio.Switch.run @@ fun sw ->
-  let resp = Discord.Httpx.post env ~sw ~body:(`Fixed text) endpoint in
-  let status = fst resp |> Http.Response.status in
-  if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
-    Cohttp_eio.Client.read_fixed resp
-  else
-    failwith
-      (Printf.sprintf "Failed to get speech: %s"
-         (Cohttp.Code.string_of_status status))
+let query_voice_provider env ~config ~provider ~text =
+  match provider with
+  | Config.Post endpoint ->
+      Eio.Switch.run @@ fun sw ->
+      let resp = Discord.Httpx.post env ~sw ~body:(`Fixed text) endpoint in
+      let status = fst resp |> Http.Response.status in
+      if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
+        Discord.Httpx.drain_resp_body resp
+      else
+        failwith
+          (Printf.sprintf "Failed to get speech: %s"
+             (Cohttp.Code.string_of_status status))
+  | Config.Su_shiki_com query ->
+      let key =
+        match config.Config.su_shiki_com_api_key with
+        | None -> failwith "su_shiki_com_api_key is not set"
+        | Some key -> key
+      in
+      Eio.Switch.run @@ fun sw ->
+      let endpoint = "https://api.su-shiki.com/v2/voicevox/audio/?" ^ query in
+      let body =
+        Uri.encoded_of_query [ ("text", [ text ]); ("key", [ key ]) ]
+      in
+      let resp =
+        Discord.Httpx.post env ~sw
+          ~headers:[ ("content-type", "application/x-www-form-urlencoded") ]
+          ~body:(`Fixed body) endpoint
+      in
+      let status = fst resp |> Http.Response.status in
+      if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
+        Discord.Httpx.drain_resp_body resp
+      else
+        failwith
+          (Printf.sprintf "Failed to get speech: %s"
+             (Cohttp.Code.string_of_status status))
 
 let format_discord_message (msg : Discord.Object.message) =
   (* Concat dummy to content if there are attachments *)

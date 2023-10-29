@@ -21,6 +21,62 @@ prompt_regex: '^!ymr\s+(.+)$'
 role_to_voice:
   - role: "結月ゆかり"
     voice: ["post", "http://localhost:8400"]
+  - role: "四国めたん"
+    voice: ["su_shiki_com", "speaker=2"]
+  - role: "ずんだもん"
+    voice: ["su_shiki_com", "speaker=3"]
+  - role: "春日部つむぎ"
+    voice: ["su_shiki_com", "speaker=8"]
+  - role: "雨晴はう"
+    voice: ["su_shiki_com", "speaker=10"]
+  - role: "波音リツ"
+    voice: ["su_shiki_com", "speaker=9"]
+  - role: "玄野武宏"
+    voice: ["su_shiki_com", "speaker=11"]
+  - role: "青山龍星"
+    voice: ["su_shiki_com", "speaker=13"]
+  - role: "冥鳴ひまり"
+    voice: ["su_shiki_com", "speaker=14"]
+  - role: "九州そら"
+    voice: ["su_shiki_com", "speaker=16"]
+  - role: "もち子さん"
+    voice: ["su_shiki_com", "speaker=20"]
+  - role: "剣崎雌雄"
+    voice: ["su_shiki_com", "speaker=21"]
+  - role: "WhiteCUL"
+    voice: ["su_shiki_com", "speaker=23"]
+  - role: "No.7"
+    voice: ["su_shiki_com", "speaker=29"]
+  - role: "ちび式じい"
+    voice: ["su_shiki_com", "speaker=42"]
+  - role: "櫻歌ミコ"
+    voice: ["su_shiki_com", "speaker=43"]
+  - role: "小夜/SAYO"
+    voice: ["su_shiki_com", "speaker=46"]
+  - role: "ナースロボ＿タイプＴ"
+    voice: ["su_shiki_com", "speaker=47"]
+  - role: "†聖騎士 紅桜†"
+    voice: ["su_shiki_com", "speaker=51"]
+  - role: "雀松朱司"
+    voice: ["su_shiki_com", "speaker=52"]
+  - role: "麒ヶ島宗麟"
+    voice: ["su_shiki_com", "speaker=53"]
+  - role: "春歌ナナ"
+    voice: ["su_shiki_com", "speaker=54"]
+  - role: "猫使アル"
+    voice: ["su_shiki_com", "speaker=55"]
+  - role: "猫使ビィ"
+    voice: ["su_shiki_com", "speaker=58"]
+  - role: "中国うさぎ"
+    voice: ["su_shiki_com", "speaker=61"]
+  - role: "栗田まろん"
+    voice: ["su_shiki_com", "speaker=67"]
+  - role: "あいえるたん"
+    voice: ["su_shiki_com", "speaker=68"]
+  - role: "満別花丸"
+    voice: ["su_shiki_com", "speaker=69"]
+  - role: "琴詠ニア"
+    voice: ["su_shiki_com", "speaker=74"]
 template_text_message:
   summon: "{{ channel_name }}に参加します。"
   summon_but_already_joined: "すでにボイスチャネルに参加しています。"

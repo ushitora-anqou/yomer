@@ -57,4 +57,4 @@ let drain_resp_body resp =
       | Last_chunk _ -> ())
   with
   | None -> Cohttp_eio.Client.read_fixed resp
-  | Some _ -> String.concat "" !body
+  | Some _ -> String.concat "" (List.rev !body)

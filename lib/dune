@@ -18,6 +18,7 @@
   pcre2
   ptime
   table
+  uri
   uuseg.string
   uutf
   yaml
