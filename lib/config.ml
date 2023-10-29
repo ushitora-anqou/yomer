@@ -1,10 +1,12 @@
-type voice =
+open Util
+
+type provider =
   | Post of string
   (* `Post url` will send POST request to url *)
   | Su_shiki_com of string (* `Su_shiki_com query` will use su-shiki.com API *)
 [@@deriving show]
 
-type role_voice = { role : string; voice : voice }
+type voice = { name : string; provider : provider; available_via_role : bool }
 
 type template_text_message = {
   summon : string;
@@ -29,17 +31,18 @@ type template_voice_message = {
 type t = {
   discord_token : string;
   gateway_intents : int;
-  announcer : voice;
+  announcer : string;
   dummy_message : string;
   ffmpeg_path : string;
   ffmpeg_options : string list;
   message_length_limit : int;
   ms_before_leave : int;
   prompt_regex : Pcre2.regexp;
-  role_to_voice : role_voice array;
   template_text_message : template_text_message;
   template_voice_message : template_voice_message;
   su_shiki_com_api_key : string option;
+  voices : voice StringMap.t;
+  voice_names : string array;
 }
 
 module P = struct
@@ -128,9 +131,7 @@ let of_yaml root =
       |> List.map Discord.Intent.of_string
       |> Discord.Intent.encode
     in
-    let announcer =
-      try_ "announcer" @@ fun n -> root |> member n |> to_voice_exn
-    in
+    let announcer = root |> try_string "announcer" in
     let dummy_message = root |> try_string "dummy_message" in
     let ffmpeg_path = root |> try_string "ffmpeg_path" in
     let ffmpeg_options =
@@ -145,15 +146,6 @@ let of_yaml root =
       if Pcre2.capturecount re <> 1 then failwith "capture count should be 1";
       re
     in
-    let role_to_voice =
-      try_ "role_to_voice" @@ fun n ->
-      root |> member n |> to_list_exn
-      |> List.map (fun x ->
-             let role = x |> member "role" |> to_string_exn in
-             let voice = x |> member "voice" |> to_voice_exn in
-             { role; voice })
-      |> Array.of_list
-    in
     let template_text_message =
       try_ "template_text_message" @@ fun n ->
       root |> member n |> template_text_message_of_yojson
@@ -167,6 +159,22 @@ let of_yaml root =
       root |> member_opt n |> Option.map to_string_exn
       (* FIXME: validate su_shiki_com_api_key is set if necessary *)
     in
+    let voices =
+      try_ "voices" @@ fun n ->
+      root |> member n |> to_map_exn
+      |> List.map (fun (name, src) ->
+             let provider = src |> member "provider" |> to_voice_exn in
+             let available_via_role =
+               src
+               |> member_opt "available_via_role"
+               |> Option.map to_bool_exn |> Option.value ~default:true
+             in
+             (name, { name; provider; available_via_role }))
+      |> List.to_seq |> StringMap.of_seq
+    in
+    let voice_names =
+      voices |> StringMap.to_rev_seq |> Seq.map fst |> Array.of_seq
+    in
     Ok
       {
         discord_token;
@@ -178,9 +186,10 @@ let of_yaml root =
         message_length_limit;
         ms_before_leave;
         prompt_regex;
-        role_to_voice;
         template_text_message;
         template_voice_message;
         su_shiki_com_api_key;
+        voices;
+        voice_names;
       }
   with Failure msg -> Error (`Msg msg)

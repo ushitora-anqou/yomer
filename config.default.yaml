@@ -4,7 +4,6 @@ gateway_intents:
   - "GUILD_VOICE_STATES"
   - "GUILD_MESSAGES"
   - "MESSAGE_CONTENT"
-announcer: ["post", "http://localhost:8400"]
 dummy_message: "ちくわ大明神。"
 ffmpeg_path: "/usr/bin/ffmpeg"
 ffmpeg_options: [
@@ -18,65 +17,6 @@ ffmpeg_options: [
 message_length_limit: 100
 ms_before_leave: 5000
 prompt_regex: '^!ymr\s+(.+)$'
-role_to_voice:
-  - role: "結月ゆかり"
-    voice: ["post", "http://localhost:8400"]
-  - role: "四国めたん"
-    voice: ["su_shiki_com", "speaker=2"]
-  - role: "ずんだもん"
-    voice: ["su_shiki_com", "speaker=3"]
-  - role: "春日部つむぎ"
-    voice: ["su_shiki_com", "speaker=8"]
-  - role: "雨晴はう"
-    voice: ["su_shiki_com", "speaker=10"]
-  - role: "波音リツ"
-    voice: ["su_shiki_com", "speaker=9"]
-  - role: "玄野武宏"
-    voice: ["su_shiki_com", "speaker=11"]
-  - role: "青山龍星"
-    voice: ["su_shiki_com", "speaker=13"]
-  - role: "冥鳴ひまり"
-    voice: ["su_shiki_com", "speaker=14"]
-  - role: "九州そら"
-    voice: ["su_shiki_com", "speaker=16"]
-  - role: "もち子さん"
-    voice: ["su_shiki_com", "speaker=20"]
-  - role: "剣崎雌雄"
-    voice: ["su_shiki_com", "speaker=21"]
-  - role: "WhiteCUL"
-    voice: ["su_shiki_com", "speaker=23"]
-  - role: "No.7"
-    voice: ["su_shiki_com", "speaker=29"]
-  - role: "ちび式じい"
-    voice: ["su_shiki_com", "speaker=42"]
-  - role: "櫻歌ミコ"
-    voice: ["su_shiki_com", "speaker=43"]
-  - role: "小夜/SAYO"
-    voice: ["su_shiki_com", "speaker=46"]
-  - role: "ナースロボ＿タイプＴ"
-    voice: ["su_shiki_com", "speaker=47"]
-  - role: "†聖騎士 紅桜†"
-    voice: ["su_shiki_com", "speaker=51"]
-  - role: "雀松朱司"
-    voice: ["su_shiki_com", "speaker=52"]
-  - role: "麒ヶ島宗麟"
-    voice: ["su_shiki_com", "speaker=53"]
-  - role: "春歌ナナ"
-    voice: ["su_shiki_com", "speaker=54"]
-  - role: "猫使アル"
-    voice: ["su_shiki_com", "speaker=55"]
-  - role: "猫使ビィ"
-    voice: ["su_shiki_com", "speaker=58"]
-  - role: "中国うさぎ"
-    voice: ["su_shiki_com", "speaker=61"]
-  - role: "栗田まろん"
-    voice: ["su_shiki_com", "speaker=67"]
-  - role: "あいえるたん"
-    voice: ["su_shiki_com", "speaker=68"]
-  - role: "満別花丸"
-    voice: ["su_shiki_com", "speaker=69"]
-  - role: "琴詠ニア"
-    voice: ["su_shiki_com", "speaker=74"]
 template_text_message:
   summon: "{{ channel_name }}に参加します。"
   summon_but_already_joined: "すでにボイスチャネルに参加しています。"
@@ -98,3 +38,64 @@ template_voice_message:
   started_live: "{{ user_name }}さんがライブを始めました。"
   stopped_live: "{{ user_name }}さんがライブを終了しました。"
   created_thread: "{{ user_name }}さんがスレッド「{{ thread_name }}」を作りました。"
+announcer: "結月ゆかり"
+voices:
+  "結月ゆかり":
+    provider: ["post", "http://localhost:8400"]
+    available_via_role: false
+  "四国めたん":
+    provider: ["su_shiki_com", "speaker=2"]
+  "ずんだもん":
+    provider: ["su_shiki_com", "speaker=3"]
+  "春日部つむぎ":
+    provider: ["su_shiki_com", "speaker=8"]
+  "雨晴はう":
+    provider: ["su_shiki_com", "speaker=10"]
+  "波音リツ":
+    provider: ["su_shiki_com", "speaker=9"]
+  "玄野武宏":
+    provider: ["su_shiki_com", "speaker=11"]
+  "青山龍星":
+    provider: ["su_shiki_com", "speaker=13"]
+  "冥鳴ひまり":
+    provider: ["su_shiki_com", "speaker=14"]
+  "九州そら":
+    provider: ["su_shiki_com", "speaker=16"]
+  "もち子さん":
+    provider: ["su_shiki_com", "speaker=20"]
+  "剣崎雌雄":
+    provider: ["su_shiki_com", "speaker=21"]
+  "WhiteCUL":
+    provider: ["su_shiki_com", "speaker=23"]
+  "No.7":
+    provider: ["su_shiki_com", "speaker=29"]
+  "ちび式じい":
+    provider: ["su_shiki_com", "speaker=42"]
+  "櫻歌ミコ":
+    provider: ["su_shiki_com", "speaker=43"]
+  "小夜/SAYO":
+    provider: ["su_shiki_com", "speaker=46"]
+  "ナースロボ＿タイプＴ":
+    provider: ["su_shiki_com", "speaker=47"]
+  "†聖騎士 紅桜†":
+    provider: ["su_shiki_com", "speaker=51"]
+  "雀松朱司":
+    provider: ["su_shiki_com", "speaker=52"]
+  "麒ヶ島宗麟":
+    provider: ["su_shiki_com", "speaker=53"]
+  "春歌ナナ":
+    provider: ["su_shiki_com", "speaker=54"]
+  "猫使アル":
+    provider: ["su_shiki_com", "speaker=55"]
+  "猫使ビィ":
+    provider: ["su_shiki_com", "speaker=58"]
+  "中国うさぎ":
+    provider: ["su_shiki_com", "speaker=61"]
+  "栗田まろん":
+    provider: ["su_shiki_com", "speaker=67"]
+  "あいえるたん":
+    provider: ["su_shiki_com", "speaker=68"]
+  "満別花丸":
+    provider: ["su_shiki_com", "speaker=69"]
+  "琴詠ニア":
+    provider: ["su_shiki_com", "speaker=74"]

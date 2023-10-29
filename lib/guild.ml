@@ -94,6 +94,7 @@ let format_discord_message (msg : Discord.Object.message) =
 
 let start_speaking env ~sw ~token state msg =
   let guild_id = state.guild_id in
+  let config = state.config in
 
   let content =
     match msg with
@@ -107,7 +108,7 @@ let start_speaking env ~sw ~token state msg =
 
   let provider =
     match msg with
-    | `Bare _ -> state.config.announcer
+    | `Bare _ -> (StringMap.find config.announcer config.voices).provider
     | `Discord (msg : Discord.Object.message) -> (
         let id_to_role =
           Discord.Rest.get_guild_roles env ~token ~guild_id
@@ -124,20 +125,20 @@ let start_speaking env ~sw ~token state msg =
           member.roles
           |> List.find_map (fun (role_id : string) ->
                  let r = id_to_role |> StringMap.find role_id in
-                 state.config.role_to_voice
-                 |> Array.find_map (fun (r' : Config.role_voice) ->
-                        if r.name = r'.role then Some r'.voice else None))
+                 match config.voices |> StringMap.find_opt r.name with
+                 | Some v when v.available_via_role -> Some v.provider
+                 | _ -> None)
         with
-        | Some voice -> voice
+        | Some p -> p
         | None ->
             (* The author doesn't have any role for voice, so select one based on their id *)
-            let num_roles = Array.length state.config.role_to_voice in
+            let num_roles = Array.length config.voice_names in
             let index = int_of_string msg.author.id mod num_roles in
-            state.config.role_to_voice.(index).voice)
+            (StringMap.find config.voice_names.(index) config.voices).provider)
   in
 
   Logs.info (fun m ->
-      m "Speaking: %s: %s: %s" guild_id (Config.show_voice provider) content);
+      m "Speaking: %s: %s: %s" guild_id (Config.show_provider provider) content);
   let wav =
     query_voice_provider env ~config:state.config ~provider ~text:content
   in
