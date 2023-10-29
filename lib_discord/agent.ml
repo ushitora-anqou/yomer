@@ -50,16 +50,12 @@ class t =
       in
       { st; gw; consumer }
 
-    method! private handle_cast env ~sw ({ st; gw; consumer; _ } as state) =
+    method! private handle_cast _env ~sw:_ ({ st; gw; consumer; _ } as state) =
       function
       | `Event ev ->
           Actaa.Gen_server.cast consumer ev;
           `NoReply state
       | `JoinChannel { self_mute; self_deaf; guild_id; channel_id } ->
-          let vgw = Voice_gateway.create () in
-          if State.set_voice_if_not_exists st ~guild_id ~channel_id ~gateway:vgw
-          then
-            Voice_gateway.start vgw env sw (self :> Gateway.consumer) ~guild_id;
           Gateway.send_voice_state_update ~guild_id ~channel_id ~self_mute
             ~self_deaf gw;
           `NoReply state

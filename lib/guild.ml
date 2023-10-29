@@ -252,6 +252,9 @@ let send_message env ~token ~channel_id ~content =
     ()
   |> Discord.Rest.create_message env ~token channel_id
 
+let reset_speaking_status state =
+  { state with msg_queue = Queue.create (); speaking_status = NotReady }
+
 class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
@@ -269,7 +272,7 @@ class t =
 
     method private handle_activity env ~sw state
         (member : Discord.Object.guild_member) activity =
-      let react tmpl =
+      let react tmpl state =
         let state =
           member |> get_display_name
           |> Option.fold ~none:state ~some:(fun display_name ->
@@ -283,19 +286,16 @@ class t =
       in
       let tmpl = state.config.template_voice_message in
       match activity with
-      | `I'm_joining -> react tmpl.i_joined
-      | `Someone's_joining -> react tmpl.joined
-      | `Someone's_leaving -> react tmpl.left
-      | `Someone's_starting_streaming -> react tmpl.started_live
-      | `Someone's_stopping_streaming -> react tmpl.stopped_live
+      | `I'm_joining ->
+          let state = reset_speaking_status state in
+          react tmpl.i_joined state
+      | `Someone's_joining -> react tmpl.joined state
+      | `Someone's_leaving -> react tmpl.left state
+      | `Someone's_starting_streaming -> react tmpl.started_live state
+      | `Someone's_stopping_streaming -> react tmpl.stopped_live state
       | `I'm_leaving ->
-          (* Reset speaking state *)
-          `NoReply
-            {
-              state with
-              msg_queue = Queue.create ();
-              speaking_status = NotReady;
-            }
+          let state = reset_speaking_status state in
+          `NoReply state
       | `Someone's_joining_any_channel -> `NoReply state
 
     method private handle_status env ~sw state

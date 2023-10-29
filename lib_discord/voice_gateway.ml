@@ -160,8 +160,9 @@ class t =
       | `WSClose reason ->
           Logs.info (fun m -> m "Voice gateway WS connection closed");
           `Stop
-            ( (if reason = `Status_code 4014 then
-                 Actaa.Process.Stop_reason.Normal
+            ( (if reason = `Status_code 4014 then (
+                 Logs.warn (fun m -> m "Voice gateway down");
+                 Actaa.Process.Stop_reason.Normal)
                else Restart),
               state )
 

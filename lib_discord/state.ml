@@ -75,12 +75,57 @@ module Voice_states = struct
     end
 end
 
-module Voice = Actaa.Registry.Make (struct
-  type key = string (* guild_id *)
+module Voice = struct
+  type key = string * string (* guild_id, channel_id *)
   type process = Voice_gateway.t
 
-  let compare = String.compare
-end)
+  module R = Actaa.Registry.Make (struct
+    type nonrec key = key
+    type nonrec process = process
+
+    let compare = compare
+  end)
+
+  type init_arg = unit
+
+  type call_msg =
+    [ `Register of key * process | `Lookup of string (* guild_id *) ]
+
+  type call_reply =
+    [ `Register of bool (* is correctly registered *)
+    | `Lookup of process option ]
+
+  type cast_msg = |
+  type msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
+  type state = { r : R.t; m : string StringMap.t (* guild_id -> channel_id *) }
+
+  class t =
+    object
+      inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
+
+      method private init env ~sw _ =
+        let r = R.make () in
+        R.start env ~sw r;
+        { r; m = StringMap.empty }
+
+      method! private handle_call _env ~sw:_ state =
+        function
+        | `Register (key, process) ->
+            let is_correctly_registered = R.register state.r key process in
+            let state =
+              if is_correctly_registered then
+                { state with m = state.m |> StringMap.add (fst key) (snd key) }
+              else state
+            in
+            `Reply (`Register is_correctly_registered, state)
+        | `Lookup guild_id -> (
+            match state.m |> StringMap.find_opt guild_id with
+            | None -> `Reply (`Lookup None, state)
+            | Some channel_id ->
+                let result = R.lookup state.r (guild_id, channel_id) in
+                `Reply (`Lookup result, state))
+    end
+end
 
 module Make (S : sig
   type key
@@ -162,8 +207,12 @@ let voice { voice; _ } guild_id =
   | `Lookup voice -> voice
   | _ -> assert false
 
-let set_voice_if_not_exists { voice; _ } ~guild_id ~channel_id:_ ~gateway =
-  Voice.register voice guild_id gateway
+let set_voice_if_not_exists { voice; _ } ~guild_id ~channel_id ~gateway =
+  match
+    Actaa.Gen_server.call voice (`Register ((guild_id, channel_id), gateway))
+  with
+  | `Register v -> v
+  | _ -> assert false
 
 let voice_states { voice_states; _ } ~guild_id ~user_id =
   match Actaa.Gen_server.call voice_states (`Get (guild_id, user_id)) with

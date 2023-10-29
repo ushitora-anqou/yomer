@@ -95,4 +95,5 @@ struct
 
   let stop (s : t) = Gen_server.cast s `Stop
   let make () = new t
+  let start env ~sw (s : t) = Gen_server.start env ~sw () s
 end
