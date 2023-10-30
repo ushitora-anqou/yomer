@@ -35,6 +35,9 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
       | [ Some "leave" ] ->
           guild |> Guild.leave_by_message msg;
           state
+      | [ Some "debug__reconnect" ] ->
+          agent |> Discord.Agent.force_reconnect;
+          state
       | _ ->
           guild |> Guild.cast_message msg;
           state)

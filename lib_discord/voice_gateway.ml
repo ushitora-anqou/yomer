@@ -137,7 +137,7 @@ class t =
             ~target:(self :> _ Actaa.Timer.receiver)
           |> ignore;
           `NoReply state
-      | `WSText content -> (
+      | `WSText (content, _) -> (
           try
             content |> Yojson.Safe.from_string |> Voice_event.of_yojson
             |> self#handle_voice_event env ~sw state
@@ -147,7 +147,7 @@ class t =
                 m "Handling event failed (voice): %s: %s" (Printexc.to_string e)
                   content);
             `NoReply state)
-      | `WSClose (`Status_code 4015) ->
+      | `WSClose (`Status_code 4015, _) ->
           Logs.info (fun m ->
               m "Discord voice server crashed. Trying to resume.");
           let ws_conn = self#connect_ws env ~sw state in
@@ -157,7 +157,7 @@ class t =
           Voice_event.(Resume { server_id; session_id; token } |> to_yojson)
           |> send_json ws_conn;
           `NoReply { state with ws_conn = Some ws_conn }
-      | `WSClose reason ->
+      | `WSClose (reason, _) ->
           Logs.info (fun m -> m "Voice gateway WS connection closed");
           `Stop
             ( (if reason = `Status_code 4014 then (

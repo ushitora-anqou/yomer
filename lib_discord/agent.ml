@@ -32,7 +32,8 @@ type cast_msg =
   [ `Event of Event.t
   | `JoinChannel of join_channel
   | `LeaveChannel of leave_channel
-  | `PlayVoice of play_voice ]
+  | `PlayVoice of play_voice
+  | `ForceReconnectGateway ]
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = basic_msg
@@ -69,6 +70,9 @@ class t =
           | Some gateway -> (
               match src with
               | `FrameSource src -> Voice_gateway.send_frame_source gateway src));
+          `NoReply state
+      | `ForceReconnectGateway ->
+          Gateway.force_reconnect gw;
           `NoReply state
 
     method! private handle_call _env ~sw:_ state =
@@ -149,3 +153,6 @@ let get_all_voice_states (agent : t) ~guild_id =
   match Actaa.Gen_server.call agent (`GetAllVoiceStates guild_id) with
   | `GetAllVoiceStates v -> v
   | _ -> assert false
+
+let force_reconnect (agent : t) =
+  Actaa.Gen_server.cast agent `ForceReconnectGateway

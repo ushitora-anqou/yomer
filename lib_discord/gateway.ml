@@ -20,7 +20,7 @@ type voice_state = {
   self_deaf : bool;
 }
 
-type cast_msg = [ `VoiceStateUpdate of voice_state ]
+type cast_msg = [ `VoiceStateUpdate of voice_state | `ForceReconnect ]
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = [ basic_msg | `Timeout of [ `Heartbeat ] | Ws.Process.msg ]
 
@@ -178,7 +178,7 @@ class t =
             ~target:(self :> _ Actaa.Timer.receiver)
           |> ignore;
           `NoReply state
-      | `WSText content -> (
+      | `WSText (content, _) -> (
           try
             let json = Yojson.Safe.from_string content in
             let state =
@@ -196,21 +196,30 @@ class t =
                   content
                   (Printexc.get_backtrace ()));
             `NoReply state)
-      | `WSClose (`Status_code (4000 | 4009) | `Unknown) ->
+      | `WSClose ((`Status_code (4000 | 4009) | `Unknown), conn)
+        when Ws.id state.ws_conn = Ws.id conn ->
           Logs.info (fun m ->
               m
                 "Gateway WS connection closed, but it can be resumed. Trying \
                  to resume.");
           `NoReply (self#resume_ws env ~sw state)
-      | `WSClose _ ->
-          Logs.info (fun m -> m "Gateway WS connection closed.");
-          `Stop (Restart, state)
+      | `WSClose (_, conn) ->
+          if Ws.id conn = Ws.id state.ws_conn then (
+            Logs.info (fun m ->
+                m "Gateway WS connection closed with reason Restart");
+            `Stop (Restart, state))
+          else (
+            Logs.info (fun m -> m "Ignoring gateway WS connection closing");
+            `NoReply state)
 
-    method! private handle_cast _env ~sw:_ state =
+    method! private handle_cast env ~sw state =
       function
       | `VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf } ->
           Event.VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf }
           |> Event.to_yojson |> send_json state.ws_conn;
+          `NoReply state
+      | `ForceReconnect ->
+          let state = self#resume_ws env ~sw state in
           `NoReply state
   end
 
@@ -222,3 +231,5 @@ let spawn env ~sw ~token ~intents ~state ~consumer =
 let send_voice_state_update ~guild_id ?channel_id ~self_mute ~self_deaf t =
   Actaa.Gen_server.cast t
     (`VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf })
+
+let force_reconnect t = Actaa.Gen_server.cast t `ForceReconnect

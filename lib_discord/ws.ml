@@ -179,12 +179,12 @@ let connect' env sw addr host path nonce extra_headers =
   (flow, read_buf)
 
 type conn = {
+  id : string;
   read_frame : unit -> Websocket.Frame.t;
   write_frame : Websocket.Frame.t -> unit;
 }
 
-let connect ?(random_string = Websocket.Rng.init ())
-    ?(extra_headers = Cohttp.Header.init ()) ~sw env url =
+let connect ?(extra_headers = Cohttp.Header.init ()) ~sw env url =
   let url = Uri.of_string url in
   let host = Uri.host url |> Option.get in
   let service = Uri.scheme url |> Option.get in
@@ -195,7 +195,7 @@ let connect ?(random_string = Websocket.Rng.init ())
   in
   let path = Uri.path_and_query url in
 
-  let nonce = Base64.encode_exn (random_string 16) in
+  let nonce = Base64.encode_exn (Csprng.random_string 16) in
   let flow, ic = connect' env sw addr host path nonce extra_headers in
 
   (* Start writer fiber. All writes must be done in this fiber,
@@ -207,7 +207,7 @@ let connect ?(random_string = Websocket.Rng.init ())
      try
        let frame = Eio.Stream.take write_queue in
        Eio.Buf_write.with_flow flow (fun oc ->
-           IO.write_frame_to_buf ~mode:(Client random_string) oc frame);
+           IO.write_frame_to_buf ~mode:(Client Csprng.random_string) oc frame);
        writer ()
      with Eio.Io _ -> ()
    in
@@ -216,14 +216,16 @@ let connect ?(random_string = Websocket.Rng.init ())
   let write_frame frame = Eio.Stream.add write_queue frame in
   let read_frame () = IO.make_read_frame ic write_frame () in
 
-  { read_frame; write_frame }
+  { id = Csprng.random_string 10; read_frame; write_frame }
 
+let id { id; _ } = id
 let read { read_frame; _ } = read_frame ()
 let write { write_frame; _ } frame = write_frame frame
 
 module Process = struct
   type msg =
-    [ `WSText of string | `WSClose of [ `Status_code of int | `Unknown ] ]
+    [ `WSText of string * conn
+    | `WSClose of [ `Status_code of int | `Unknown ] * conn ]
 
   let start ~sw conn (caster : [> msg ] Actaa.Process.t1) =
     Eio.Fiber.fork ~sw @@ fun () ->
@@ -233,7 +235,7 @@ module Process = struct
         Logs.info (fun m -> m "Ws received: %a" Websocket.Frame.pp frame);
         match frame.opcode with
         | Text ->
-            (try Actaa.Process.send caster (`WSText frame.content)
+            (try Actaa.Process.send caster (`WSText (frame.content, conn))
              with e ->
                Logs.err (fun m ->
                    m "Ws handling event failed: %s: %s" (Printexc.to_string e)
@@ -243,14 +245,15 @@ module Process = struct
             let status_code = String.get_int16_be frame.content 0 in
             Logs.warn (fun m ->
                 m "Websocket connection closed: code %d" status_code);
-            Actaa.Process.send caster (`WSClose (`Status_code status_code))
+            Actaa.Process.send caster
+              (`WSClose (`Status_code status_code, conn))
         | _ ->
             Logs.info (fun m ->
                 m "Received non-text ws frame: %a" Websocket.Frame.pp frame);
             loop ()
       with e ->
         Logs.err (fun m -> m "Ws receiving failed: %s" (Printexc.to_string e));
-        Actaa.Process.send caster (`WSClose `Unknown)
+        Actaa.Process.send caster (`WSClose (`Unknown, conn))
     in
     loop ()
 end
