@@ -20,7 +20,7 @@ type voice_state = {
   self_deaf : bool;
 }
 
-type cast_msg = [ `VoiceStateUpdate of voice_state | `ForceReconnect ]
+type cast_msg = [ `VoiceStateUpdate of voice_state | `ForceResume ]
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = [ basic_msg | `Timeout of [ `Heartbeat ] | Ws.Process.msg ]
 
@@ -63,7 +63,7 @@ class t =
       conn
 
     method resume_ws env ~sw state =
-      (* Reconnect *)
+      (* Resume *)
       let resume_gateway_url, session_id = Option.get state.resume in
       let url =
         let u = Uri.of_string resume_gateway_url in
@@ -218,7 +218,7 @@ class t =
           Event.VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf }
           |> Event.to_yojson |> send_json state.ws_conn;
           `NoReply state
-      | `ForceReconnect ->
+      | `ForceResume ->
           let state = self#resume_ws env ~sw state in
           `NoReply state
   end
@@ -232,4 +232,4 @@ let send_voice_state_update ~guild_id ?channel_id ~self_mute ~self_deaf t =
   Actaa.Gen_server.cast t
     (`VoiceStateUpdate { guild_id; channel_id; self_mute; self_deaf })
 
-let force_reconnect t = Actaa.Gen_server.cast t `ForceReconnect
+let force_resume t = Actaa.Gen_server.cast t `ForceResume

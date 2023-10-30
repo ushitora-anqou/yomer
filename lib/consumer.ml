@@ -41,8 +41,8 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
       | [ Some "leave" ] ->
           guild |> Guild.leave_by_message msg;
           state
-      | [ Some "debug__reconnect" ] when can_use_debug_command ->
-          agent |> Discord.Agent.force_reconnect;
+      | [ Some "debug__resume" ] when can_use_debug_command ->
+          agent |> Discord.Agent.force_resume;
           state
       | _ ->
           guild |> Guild.cast_message msg;
