@@ -195,8 +195,8 @@ class t =
             |> Eio.Net.Ipaddr.of_raw,
             port )
       in
-      let seq_num = 123 (* FIXME *) in
-      let timestamp = 123456 (* FIXME *) in
+      let seq_num = Csprng.random_2bytes_int () in
+      let timestamp = Csprng.random_4bytes_int () in
       let opus_encoder =
         Opus.Encoder.create ~sample_rate ~channels ~application
       in
