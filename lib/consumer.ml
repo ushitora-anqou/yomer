@@ -13,6 +13,12 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
   | Discord.Event.Dispatch (READY _) -> state
   | Dispatch (MESSAGE_CREATE msg) -> (
       let guild_id = Option.get msg.guild_id in
+      let can_use_debug_command =
+        config.users
+        |> StringMap.find_opt msg.author.id
+        |> Option.fold ~none:false ~some:(fun (u : Config.user) ->
+               u.can_use_debug_commands)
+      in
 
       (* Ensure guild exists *)
       let guild, state =
@@ -35,7 +41,7 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
       | [ Some "leave" ] ->
           guild |> Guild.leave_by_message msg;
           state
-      | [ Some "debug__reconnect" ] ->
+      | [ Some "debug__reconnect" ] when can_use_debug_command ->
           agent |> Discord.Agent.force_reconnect;
           state
       | _ ->

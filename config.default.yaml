@@ -42,7 +42,7 @@ announcer: "結月ゆかり"
 voices:
   "結月ゆかり":
     provider: ["post", "http://localhost:8400"]
-    available_via_role: false
+    available_for_all_users: false
   "四国めたん":
     provider: ["su_shiki_com", "speaker=2"]
   "ずんだもん":
@@ -99,3 +99,8 @@ voices:
     provider: ["su_shiki_com", "speaker=69"]
   "琴詠ニア":
     provider: ["su_shiki_com", "speaker=74"]
+users:
+  YOUR_USER_ID:
+    can_use_debug_commands: true
+    additionally_available_voices:
+      - "結月ゆかり"

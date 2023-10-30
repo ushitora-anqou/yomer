@@ -6,7 +6,17 @@ type provider =
   | Su_shiki_com of string (* `Su_shiki_com query` will use su-shiki.com API *)
 [@@deriving show]
 
-type voice = { name : string; provider : provider; available_via_role : bool }
+type voice = {
+  name : string;
+  provider : provider;
+  available_for_all_users : bool;
+}
+
+type user = {
+  id : string;
+  additionally_available_voices : string list;
+  can_use_debug_commands : bool;
+}
 
 type template_text_message = {
   summon : string;
@@ -43,6 +53,7 @@ type t = {
   su_shiki_com_api_key : string option;
   voices : voice StringMap.t;
   voice_names : string array;
+  users : user StringMap.t;
 }
 
 module P = struct
@@ -164,16 +175,41 @@ let of_yaml root =
       root |> member n |> to_map_exn
       |> List.map (fun (name, src) ->
              let provider = src |> member "provider" |> to_voice_exn in
-             let available_via_role =
+             let available_for_all_users =
                src
-               |> member_opt "available_via_role"
+               |> member_opt "available_for_all_users"
                |> Option.map to_bool_exn |> Option.value ~default:true
              in
-             (name, { name; provider; available_via_role }))
+             (name, { name; provider; available_for_all_users }))
       |> List.to_seq |> StringMap.of_seq
     in
     let voice_names =
       voices |> StringMap.to_rev_seq |> Seq.map fst |> Array.of_seq
+    in
+    let users =
+      try_ "users" @@ fun n ->
+      root |> member n |> to_map_exn
+      |> List.map (fun (user_id, src) ->
+             let can_use_debug_commands =
+               src
+               |> member_opt "can_use_debug_commands"
+               |> Option.map to_bool_exn
+               |> Option.value ~default:false
+             in
+             let additionally_available_voices =
+               src
+               |> member_opt "additionally_available_voices"
+               |> Option.map to_list_exn
+               |> Option.map (List.map to_string_exn)
+               |> Option.value ~default:[]
+             in
+             ( user_id,
+               {
+                 id = user_id;
+                 can_use_debug_commands;
+                 additionally_available_voices;
+               } ))
+      |> List.to_seq |> StringMap.of_seq
     in
     Ok
       {
@@ -191,5 +227,6 @@ let of_yaml root =
         su_shiki_com_api_key;
         voices;
         voice_names;
+        users;
       }
   with Failure msg -> Error (`Msg msg)

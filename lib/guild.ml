@@ -121,12 +121,21 @@ let start_speaking env ~sw ~token state msg =
             ~guild_id
           |> Result.get_ok
         in
+        let additionally_available_voices =
+          config.users
+          |> StringMap.find_opt msg.author.id
+          |> Option.fold ~none:[] ~some:(fun (u : Config.user) ->
+                 u.additionally_available_voices)
+        in
         match
           member.roles
           |> List.find_map (fun (role_id : string) ->
                  let r = id_to_role |> StringMap.find role_id in
                  match config.voices |> StringMap.find_opt r.name with
-                 | Some v when v.available_via_role -> Some v.provider
+                 | Some v
+                   when v.available_for_all_users
+                        || List.mem r.name additionally_available_voices ->
+                     Some v.provider
                  | _ -> None)
         with
         | Some p -> p
