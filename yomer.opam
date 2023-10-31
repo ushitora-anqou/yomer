@@ -11,13 +11,22 @@ doc: "https://github.com/ushitora-anqou/yomer"
 bug-reports: "https://github.com/ushitora-anqou/yomer/issues"
 depends: [
   "dune" {>= "3.10"}
-  "websocket"
-  "websocket-eio"
+  "alcotest"
+  "ctypes"
+  "ctypes-foreign"
   "cohttp" {>= "6.0.0~alpha2"}
   "cohttp-eio" {>= "6.0.0~alpha2"}
   "eio_main" {<= "0.11"}
   "jingoo"
+  "mirage-clock-unix"
+  "mirage-crypto-rng-eio"
   "ocaml" {>= "5.0.0"}
+  "ppx_yojson_conv"
+  "tls-eio"
+  "uuseg"
+  "x509"
+  "yaml"
+  "yojson"
   "odoc" {with-doc}
 ]
 build: [

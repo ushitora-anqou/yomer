@@ -22,8 +22,9 @@
  (synopsis "A Discord bot")
  (description "A Discord bot")
  (depends
-  websocket ; eio supported version
-  websocket-eio ; eio supported version
+  alcotest
+  ctypes
+  ctypes-foreign
   (cohttp
    (>= 6.0.0~alpha2))
   (cohttp-eio
@@ -31,8 +32,18 @@
   (eio_main
    (<= 0.11))
   jingoo
+  mirage-clock-unix
+  mirage-crypto-rng-eio
   (ocaml
-   (>= 5.0.0)))
+   (>= 5.0.0))
+  ppx_yojson_conv
+  tls-eio
+  uuseg
+  ;websocket
+  ;websocket-eio
+  x509
+  yaml
+  yojson)
  (tags (discord)))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project
