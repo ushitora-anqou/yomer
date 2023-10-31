@@ -195,8 +195,11 @@ let rec consume_message env ~sw state =
       { state with speaking_status = NotReady; msg_queue = Queue.create () }
   | Some (#normal_message as msg) -> (
       try
-        start_speaking env ~sw ~token:state.config.discord_token state msg;
-        { state with speaking_status = Speaking }
+        if get_num_of_non_bots_in_my_vc ~guild_id:state.guild_id state.agent = 0
+        then { state with speaking_status = Ready; msg_queue = Queue.create () }
+        else (
+          start_speaking env ~sw ~token:state.config.discord_token state msg;
+          { state with speaking_status = Speaking })
       with e ->
         Logs.err (fun m ->
             m "Failed to start speech: %s\n%s" (Printexc.to_string e)
