@@ -38,13 +38,11 @@ template_voice_message:
   started_live: "{{ user_name }}さんがライブを始めました。"
   stopped_live: "{{ user_name }}さんがライブを終了しました。"
   created_thread: "{{ user_name }}さんがスレッド「{{ thread_name }}」を作りました。"
-announcer: "結月ゆかり"
+announcer: "ずんだもん"
 voices:
-  "結月ゆかり":
-    provider: ["post", "http://localhost:8400"]
-    available_for_all_users: false
   "四国めたん":
     provider: ["su_shiki_com", "speaker=2"]
+    available_for_all_users: false
   "ずんだもん":
     provider: ["su_shiki_com", "speaker=3"]
   "春日部つむぎ":
@@ -103,4 +101,5 @@ users:
   YOUR_USER_ID:
     can_use_debug_commands: true
     additionally_available_voices:
-      - "結月ゆかり"
+      - "四国めたん"
+      - "YOUR_VOICE_NAME"
