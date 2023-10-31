@@ -194,7 +194,7 @@ end
 module Registry_case1 = struct
   module R = Registry.Make (struct
     type key = string
-    type msg = unit
+    type process = unit Process.t2
 
     let compare = String.compare
   end)
