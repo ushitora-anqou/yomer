@@ -11,6 +11,7 @@
   mirage-clock-unix
   mirage-crypto-rng
   mirage-crypto-rng-eio
+  unix
   yaml
   yomer)
  (flags :standard -cclib -lopus -cclib -lpcre2-8))

@@ -12,6 +12,7 @@ let load_config config_path =
   | Ok yaml -> yaml
 
 let () =
+  Random.init (Unix.gettimeofday () |> int_of_float);
   Yomer.Logg.setup ();
 
   if Array.length Sys.argv < 2 then

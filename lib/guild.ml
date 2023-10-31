@@ -22,7 +22,7 @@ type cast_msg =
   | `VoiceStateUpdateArrived of Discord.Event.dispatch_voice_state_update ]
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
-type msg = basic_msg
+type msg = [ basic_msg | `Timeout of [ `Leave of string ] ]
 type speaking_status = NotReady | Ready | Speaking
 
 type state = {
@@ -32,10 +32,40 @@ type state = {
   msg_queue : message Queue.t;
   speaking_status : speaking_status;
   voice_states : Discord.Event.dispatch_voice_state_update StringMap.t;
-      (* user_id -> voice_state *)
+  (* user_id -> voice_state *)
+  leave_timer_id : string option;
 }
 
 type Actaa.Process.Stop_reason.t += Restart
+
+let genid () = Random.bits () |> string_of_int
+
+let get_my_vc_id ~guild_id agent =
+  let ( let* ) = Option.bind in
+  let* user = Discord.Agent.me agent in
+  let* vstate =
+    agent |> Discord.Agent.get_voice_states ~guild_id ~user_id:user.id
+  in
+  vstate.channel_id
+
+let get_num_of_non_bots_in_my_vc ~guild_id agent =
+  match get_my_vc_id ~guild_id agent with
+  | None -> failwith "not in any vc"
+  | Some vchannel_id ->
+      StringMap.fold
+        (fun _ (vstate : Discord.Event.dispatch_voice_state_update) num ->
+          match
+            let ( let* ) = Option.bind in
+            let* vchannel_id' = vstate.channel_id in
+            let* member = vstate.member in
+            let* user = member.user in
+            let* bot = user.bot in
+            Some (vchannel_id' = vchannel_id && not bot)
+          with
+          | Some true -> num + 1
+          | _ -> num)
+        (Discord.Agent.get_all_voice_states ~guild_id agent)
+        0
 
 let query_voice_provider env ~config ~provider ~text =
   match provider with
@@ -264,6 +294,18 @@ let send_message env ~token ~channel_id ~content =
 let reset_speaking_status state =
   { state with msg_queue = Queue.create (); speaking_status = NotReady }
 
+let reset_leave_timer env ~sw state self =
+  if get_num_of_non_bots_in_my_vc ~guild_id:state.guild_id state.agent <> 0 then
+    { state with leave_timer_id = None }
+  else (
+    Logs.info (fun m -> m "No one is in the vc. Scheduling leave");
+    let timer_id = genid () in
+    let seconds = float_of_int state.config.ms_before_leave /. 1000.0 in
+    Actaa.Timer.spawn env ~sw ~id:(`Leave timer_id) ~seconds
+      ~target:(self :> _ Actaa.Timer.receiver)
+    |> ignore;
+    { state with leave_timer_id = Some timer_id })
+
 class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
@@ -277,6 +319,7 @@ class t =
         msg_queue = Queue.create ();
         speaking_status = NotReady;
         voice_states;
+        leave_timer_id = None;
       }
 
     method private handle_activity env ~sw state
@@ -298,8 +341,12 @@ class t =
       | `I'm_joining ->
           let state = reset_speaking_status state in
           react tmpl.i_joined state
-      | `Someone's_joining -> react tmpl.joined state
-      | `Someone's_leaving -> react tmpl.left state
+      | `Someone's_joining ->
+          let state = reset_leave_timer env ~sw state self in
+          react tmpl.joined state
+      | `Someone's_leaving ->
+          let state = reset_leave_timer env ~sw state self in
+          react tmpl.left state
       | `Someone's_starting_streaming -> react tmpl.started_live state
       | `Someone's_stopping_streaming -> react tmpl.stopped_live state
       | `I'm_leaving ->
@@ -370,7 +417,6 @@ class t =
       let { agent; guild_id; speaking_status; config; _ } = state in
       let token = config.discord_token in
       let ( >>= ) = Option.bind in
-      let ( let* ) = ( >>= ) in
       match msg with
       | `JoinByMessage msg -> (
           match
@@ -391,13 +437,7 @@ class t =
             agent
             |> get_voice_channel_from_user_id ~guild_id ~user_id:msg.author.id
           in
-          let my_vc_id =
-            let* user = Discord.Agent.me agent in
-            let* vstate =
-              agent |> Discord.Agent.get_voice_states ~guild_id ~user_id:user.id
-            in
-            vstate.channel_id
-          in
+          let my_vc_id = get_my_vc_id ~guild_id agent in
           if user_vc_id = my_vc_id then
             let state =
               enqueue_message env ~sw state
@@ -420,6 +460,17 @@ class t =
           then Logs.err (fun m -> m "Failed to send pong");
           `NoReply state
       | _ -> self#handle_status env ~sw state (speaking_status, msg)
+
+    method! private handle_info env ~sw state =
+      function
+      | #basic_msg -> assert false
+      | `Timeout (`Leave timer_id) when state.leave_timer_id <> Some timer_id ->
+          (* ignore *)
+          `NoReply state
+      | `Timeout (`Leave _) ->
+          Logs.info (fun m -> m "Leave timeout reached");
+          let state = enqueue_message env ~sw state `ScheduledLeave in
+          `NoReply state
   end
 
 let create () = new t
