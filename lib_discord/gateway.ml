@@ -205,7 +205,7 @@ class t =
           `NoReply (self#resume_ws env ~sw state)
       | `WSClose (_, conn) ->
           if Ws.id conn = Ws.id state.ws_conn then (
-            Logs.info (fun m ->
+            Logs.err (fun m ->
                 m "Gateway WS connection closed with reason Restart");
             `Stop (Restart, state))
           else (

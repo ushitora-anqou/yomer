@@ -157,14 +157,9 @@ class t =
           Voice_event.(Resume { server_id; session_id; token } |> to_yojson)
           |> send_json ws_conn;
           `NoReply { state with ws_conn = Some ws_conn }
-      | `WSClose (reason, _) ->
-          Logs.info (fun m -> m "Voice gateway WS connection closed");
-          `Stop
-            ( (if reason = `Status_code 4014 then (
-                 Logs.warn (fun m -> m "Voice gateway down");
-                 Actaa.Process.Stop_reason.Normal)
-               else Restart),
-              state )
+      | `WSClose (_reason, _) ->
+          Logs.warn (fun m -> m "Voice gateway WS connection closed");
+          `Stop (Actaa.Process.Stop_reason.Normal, state)
 
     method! private handle_cast env ~sw state =
       function
