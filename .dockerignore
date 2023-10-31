@@ -1,0 +1,9 @@
+.git
+_build/
+misc/
+.opam
+config.default.yaml
+Dockerfile
+LICENSE
+Makefile
+README.md
