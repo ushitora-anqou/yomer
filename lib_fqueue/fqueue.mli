@@ -3,7 +3,7 @@ module type S = sig
 
   exception Empty
 
-  val create : unit -> 'a t
+  val empty : 'a t
   val add : 'a t -> 'a -> 'a t
   val push : 'a t -> 'a -> 'a t
   val take : 'a t -> 'a * 'a t

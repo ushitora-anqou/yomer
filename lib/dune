@@ -11,6 +11,7 @@
   eio.core
   eio.unix
   fmt
+  fqueue
   jingoo
   logs
   mirage-clock-unix

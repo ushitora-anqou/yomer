@@ -95,7 +95,7 @@ module type S = sig
 
   exception Empty
 
-  val create : unit -> 'a t
+  val empty : 'a t
   val add : 'a t -> 'a -> 'a t
   val push : 'a t -> 'a -> 'a t
   val take : 'a t -> 'a * 'a t
@@ -112,7 +112,7 @@ module Extend (Q : PFDS) : S = struct
 
   exception Empty = Empty
 
-  let create () = Q.empty
+  let empty = Q.empty
   let add = Q.snoc
   let push = Q.snoc
   let take q = (Q.head q, Q.tail q)

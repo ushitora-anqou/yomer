@@ -29,7 +29,7 @@ type state = {
   config : Config.t;
   guild_id : string;
   agent : Discord.Agent.t;
-  msg_queue : message Queue.t;
+  msg_queue : message Fqueue.t;
   speaking_status : speaking_status;
   voice_states : Discord.Event.dispatch_voice_state_update StringMap.t;
   (* user_id -> voice_state *)
@@ -187,16 +187,24 @@ let start_speaking env ~sw ~token state msg =
        (Eio.Stdenv.process_mgr env)
        ~sw ~guild_id ~src:(`Pipe src)
 
+let push_msg_queue msg state =
+  { state with msg_queue = Fqueue.push state.msg_queue msg }
+
+let take_msg_from_queue state =
+  let elm, msg_queue = Fqueue.take_opt state.msg_queue in
+  let state = { state with msg_queue } in
+  (elm, state)
+
 let rec consume_message env ~sw state =
-  match Queue.take_opt state.msg_queue with
-  | None -> { state with speaking_status = Ready }
-  | Some `ScheduledLeave ->
+  match take_msg_from_queue state with
+  | None, state -> { state with speaking_status = Ready }
+  | Some `ScheduledLeave, state ->
       state.agent |> Discord.Agent.leave_channel ~guild_id:state.guild_id;
-      { state with speaking_status = NotReady; msg_queue = Queue.create () }
-  | Some (#normal_message as msg) -> (
+      { state with speaking_status = NotReady; msg_queue = Fqueue.empty }
+  | Some (#normal_message as msg), state -> (
       try
         if get_num_of_non_bots_in_my_vc ~guild_id:state.guild_id state.agent = 0
-        then { state with speaking_status = Ready; msg_queue = Queue.create () }
+        then { state with speaking_status = Ready; msg_queue = Fqueue.empty }
         else (
           start_speaking env ~sw ~token:state.config.discord_token state msg;
           { state with speaking_status = Speaking })
@@ -211,15 +219,12 @@ let enqueue_message env ~sw state msg =
   | NotReady, `Bare _ ->
       (* Enqueue only bare messages if status is not ready
          in order to speak out the welcome message *)
-      Queue.push msg state.msg_queue;
-      state
+      push_msg_queue msg state
   | NotReady, _ -> state
   | Ready, _ ->
-      Queue.push msg state.msg_queue;
+      let state = push_msg_queue msg state in
       consume_message env ~sw state
-  | Speaking, _ ->
-      Queue.push msg state.msg_queue;
-      state
+  | Speaking, _ -> push_msg_queue msg state
 
 let get_activity state (payload : Discord.Event.dispatch_voice_state_update) =
   let ( let* ) = Option.bind in
@@ -295,7 +300,7 @@ let send_message env ~token ~channel_id ~content =
   |> Discord.Rest.create_message env ~token channel_id
 
 let reset_speaking_status state =
-  { state with msg_queue = Queue.create (); speaking_status = NotReady }
+  { state with msg_queue = Fqueue.empty; speaking_status = NotReady }
 
 let reset_leave_timer env ~sw state self =
   if get_num_of_non_bots_in_my_vc ~guild_id:state.guild_id state.agent <> 0 then
@@ -319,7 +324,7 @@ class t =
         config;
         guild_id;
         agent;
-        msg_queue = Queue.create ();
+        msg_queue = Fqueue.empty;
         speaking_status = NotReady;
         voice_states;
         leave_timer_id = None;

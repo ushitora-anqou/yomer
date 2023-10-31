@@ -8,7 +8,7 @@ module Tests (Q : Fqueue.S) = struct
     with Empty -> true
 
   let test_basics () =
-    let q = create () in
+    let q = empty in
     assert (is_empty q);
     assert (does_raise_empty take q);
     assert (does_raise_empty pop q);
@@ -37,7 +37,7 @@ module Tests (Q : Fqueue.S) = struct
     ()
 
   let test_persistency () =
-    let q1 = create () in
+    let q1 = empty in
     let q2 = add q1 1 in
     let q3 = add q2 2 in
     let x, q3' = take_opt q3 in
