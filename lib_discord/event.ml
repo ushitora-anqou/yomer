@@ -25,6 +25,8 @@ type dispatch_voice_state_update = {
   session_id : string;
   member : Object.guild_member option; [@yojson.option]
   self_stream : bool option; [@yojson.option]
+  self_mute : bool option; [@yojson.option]
+  self_deaf : bool option; [@yojson.option]
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 

@@ -8,9 +8,42 @@ type state = { guilds : Guild.t StringMap.t }
 
 let get_guild guild_id state = StringMap.find_opt guild_id state.guilds
 
+let ensure_guild_exists env ~sw ~config ~guild_id ~state ~agent =
+  match StringMap.find_opt guild_id state.guilds with
+  | Some guild -> (guild, state)
+  | None ->
+      let guild = Guild.create () in
+      guild |> Guild.start env ~sw ~guild_id ~agent ~config;
+      (guild, { guilds = state.guilds |> StringMap.add guild_id guild })
+
 let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
     state = function
   | Discord.Event.Dispatch (READY _) -> state
+  | Dispatch (GUILD_CREATE { voice_states = Some vstates; id = guild_id; _ })
+    -> (
+      (* Join the channel if we're already in it *)
+      let self_user_id = (Option.get (Discord.Agent.me agent)).id in
+      match
+        vstates
+        |> List.find_opt
+             (fun (vstate : Discord.Event.dispatch_voice_state_update) ->
+               vstate.user_id = self_user_id)
+      with
+      | Some
+          {
+            channel_id = Some channel_id;
+            self_mute = Some self_mute;
+            self_deaf = Some self_deaf;
+            _;
+          } ->
+          let _, state =
+            ensure_guild_exists env ~sw ~config ~guild_id ~state ~agent
+          in
+          agent
+          |> Discord.Agent.join_channel ~self_mute ~self_deaf ~guild_id
+               ~channel_id;
+          state
+      | _ -> state)
   | Dispatch (MESSAGE_CREATE msg) -> (
       let guild_id = Option.get msg.guild_id in
       let can_use_debug_command =
@@ -20,14 +53,8 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
                u.can_use_debug_commands)
       in
 
-      (* Ensure guild exists *)
       let guild, state =
-        match StringMap.find_opt guild_id state.guilds with
-        | Some guild -> (guild, state)
-        | None ->
-            let guild = Guild.create () in
-            guild |> Guild.start env ~sw ~guild_id ~agent ~config;
-            (guild, { guilds = state.guilds |> StringMap.add guild_id guild })
+        ensure_guild_exists env ~sw ~config ~guild_id ~state ~agent
       in
 
       match parse_command config.prompt_regex msg.content with
