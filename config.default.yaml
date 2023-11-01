@@ -25,7 +25,7 @@ template_text_message:
   unsummon_not_from_same_vc: "同じボイスチャネルから呼んでください。"
   unsummon_not_joined: "まだボイスチャネルに入っていません。"
   help: |-
-    Daidoquer2 v#{{ version }}
+    Yomer v#{{ version }}
 
     /join  Join the VC
     /leave Leave the VC
