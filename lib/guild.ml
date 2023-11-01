@@ -1,7 +1,9 @@
 open Util
 
 type normal_message = [ `Bare of string | `Discord of Discord.Object.message ]
-type message = [ normal_message | `ScheduledLeave ]
+
+type message =
+  [ normal_message | `Wait of float (* seconds *) | `ScheduledLeave ]
 
 type init_arg = {
   guild_id : string;
@@ -22,8 +24,8 @@ type cast_msg =
   | `VoiceStateUpdateArrived of Discord.Event.dispatch_voice_state_update ]
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
-type msg = [ basic_msg | `Timeout of [ `Leave of string ] ]
-type speaking_status = NotReady | Ready | Speaking
+type msg = [ basic_msg | `Timeout of [ `Leave of string | `Wait ] ]
+type speaking_status = NotReady | Ready | Speaking | Waiting
 
 type state = {
   config : Config.t;
@@ -206,37 +208,6 @@ let take_msg_from_queue state =
   let state = { state with msg_queue } in
   (elm, state)
 
-let rec consume_message env ~sw state =
-  match take_msg_from_queue state with
-  | None, state -> { state with speaking_status = Ready }
-  | Some `ScheduledLeave, state ->
-      state.agent |> Discord.Agent.leave_channel ~guild_id:state.guild_id;
-      { state with speaking_status = NotReady; msg_queue = Fqueue.empty }
-  | Some (#normal_message as msg), state -> (
-      try
-        if get_num_of_non_bots_in_my_vc env state = 0 then
-          { state with speaking_status = Ready; msg_queue = Fqueue.empty }
-        else (
-          start_speaking env ~sw ~token:state.config.discord_token state msg;
-          { state with speaking_status = Speaking })
-      with e ->
-        Logs.err (fun m ->
-            m "Failed to start speech: %s\n%s" (Printexc.to_string e)
-              (Printexc.get_backtrace ()));
-        consume_message env ~sw state)
-
-let enqueue_message env ~sw state msg =
-  match (state.speaking_status, msg) with
-  | NotReady, `Bare _ ->
-      (* Enqueue only bare messages if status is not ready
-         in order to speak out the welcome message *)
-      push_msg_queue msg state
-  | NotReady, _ -> state
-  | Ready, _ ->
-      let state = push_msg_queue msg state in
-      consume_message env ~sw state
-  | Speaking, _ -> push_msg_queue msg state
-
 let get_activity state (payload : Discord.Event.dispatch_voice_state_update) =
   let ( let* ) = Option.bind in
   let p = StringMap.find_opt payload.user_id state.voice_states in
@@ -341,6 +312,42 @@ class t =
         leave_timer_id = None;
       }
 
+    method private consume_message env ~sw state =
+      match take_msg_from_queue state with
+      | None, state -> { state with speaking_status = Ready }
+      | Some (`Wait seconds), state ->
+          Actaa.Timer.spawn env ~sw ~id:`Wait ~seconds
+            ~target:(self :> _ Actaa.Timer.receiver)
+          |> ignore;
+          { state with speaking_status = Waiting }
+      | Some `ScheduledLeave, state ->
+          state.agent |> Discord.Agent.leave_channel ~guild_id:state.guild_id;
+          { state with speaking_status = NotReady; msg_queue = Fqueue.empty }
+      | Some (#normal_message as msg), state -> (
+          try
+            if get_num_of_non_bots_in_my_vc env state = 0 then
+              { state with speaking_status = Ready; msg_queue = Fqueue.empty }
+            else (
+              start_speaking env ~sw ~token:state.config.discord_token state msg;
+              { state with speaking_status = Speaking })
+          with e ->
+            Logs.err (fun m ->
+                m "Failed to start speech: %s\n%s" (Printexc.to_string e)
+                  (Printexc.get_backtrace ()));
+            self#consume_message env ~sw state)
+
+    method private enqueue_message env ~sw state msg =
+      match (state.speaking_status, msg) with
+      | NotReady, `Bare _ ->
+          (* Enqueue only bare messages if status is not ready
+             in order to speak out the welcome message *)
+          push_msg_queue msg state
+      | NotReady, _ -> state
+      | Ready, _ ->
+          let state = push_msg_queue msg state in
+          self#consume_message env ~sw state
+      | (Speaking | Waiting), _ -> push_msg_queue msg state
+
     method private handle_activity env ~sw state
         (member : Discord.Object.guild_member) activity =
       let react tmpl state =
@@ -351,7 +358,7 @@ class t =
                    [ ("user_name", Jingoo.Jg_types.Tstr display_name) ]
                  in
                  let msg = Jingoo.Jg_template.from_string ~models tmpl in
-                 enqueue_message env ~sw state (`Bare msg))
+                 self#enqueue_message env ~sw state (`Bare msg))
         in
         `NoReply state
       in
@@ -381,11 +388,11 @@ class t =
        *)
       | NotReady, `MessageArrived (`Bare _ as msg) ->
           (* Enqueue only bare messages to speak out the welcome message *)
-          let state = enqueue_message env ~sw state msg in
+          let state = self#enqueue_message env ~sw state msg in
           `NoReply state
       | NotReady, `MessageArrived _ -> (* Just ignore *) `NoReply state
       | NotReady, `VoiceReady ->
-          let state = consume_message env ~sw state in
+          let state = self#consume_message env ~sw state in
           `NoReply state
       | NotReady, `VoiceSpeaking _ ->
           (* invalid state *)
@@ -400,7 +407,7 @@ class t =
        *)
       | Ready, `VoiceReady -> (* Just ignore *) `NoReply state
       | Ready, `MessageArrived msg ->
-          let state = enqueue_message env ~sw state msg in
+          let state = self#enqueue_message env ~sw state msg in
           `NoReply state
       | Ready, `VoiceSpeaking _ ->
           (* invalid state *)
@@ -414,10 +421,18 @@ class t =
       | Speaking, `VoiceReady | Speaking, `VoiceSpeaking true ->
           (* Just ignore *) `NoReply state
       | Speaking, `MessageArrived msg ->
-          let state = enqueue_message env ~sw state msg in
+          let state = self#enqueue_message env ~sw state msg in
           `NoReply state
       | Speaking, `VoiceSpeaking false ->
-          let state = consume_message env ~sw state in
+          let state = self#consume_message env ~sw state in
+          `NoReply state
+      (*
+       * status = Waiting
+       *)
+      | Waiting, `VoiceReady | Waiting, `VoiceSpeaking _ ->
+          (* Just ignore *) `NoReply state
+      | Waiting, `MessageArrived msg ->
+          let state = self#enqueue_message env ~sw state msg in
           `NoReply state
       (*
        * misc
@@ -459,10 +474,11 @@ class t =
           let my_vc_id = get_my_vc_id ~guild_id agent in
           if user_vc_id = my_vc_id then
             let state =
-              enqueue_message env ~sw state
+              self#enqueue_message env ~sw state
                 (`Bare config.template_voice_message.im_leaving)
             in
-            let state = enqueue_message env ~sw state `ScheduledLeave in
+            let state = self#enqueue_message env ~sw state (`Wait 0.5) in
+            let state = self#enqueue_message env ~sw state `ScheduledLeave in
             `NoReply state
           else (
             send_message env ~token ~channel_id:msg.channel_id
@@ -488,7 +504,11 @@ class t =
           `NoReply state
       | `Timeout (`Leave _) ->
           Logs.info (fun m -> m "Leave timeout reached");
-          let state = enqueue_message env ~sw state `ScheduledLeave in
+          let state = self#enqueue_message env ~sw state `ScheduledLeave in
+          `NoReply state
+      | `Timeout `Wait ->
+          Logs.info (fun m -> m "Wait timeout reached");
+          let state = self#consume_message env ~sw state in
           `NoReply state
   end
 
