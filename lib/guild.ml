@@ -48,24 +48,35 @@ let get_my_vc_id ~guild_id agent =
   in
   vstate.channel_id
 
-let get_num_of_non_bots_in_my_vc ~guild_id agent =
+let get_num_of_non_bots_in_my_vc env state =
+  let guild_id = state.guild_id in
+  let agent = state.agent in
   match get_my_vc_id ~guild_id agent with
   | None -> failwith "not in any vc"
   | Some vchannel_id ->
-      StringMap.fold
-        (fun _ (vstate : Discord.Event.dispatch_voice_state_update) num ->
-          match
-            let ( let* ) = Option.bind in
-            let* vchannel_id' = vstate.channel_id in
-            let* member = vstate.member in
-            let* user = member.user in
-            let* bot = user.bot in
-            Some (vchannel_id' = vchannel_id && not bot)
-          with
-          | Some true -> num + 1
-          | _ -> num)
-        (Discord.Agent.get_all_voice_states ~guild_id agent)
-        0
+      let aux _ (vstate : Discord.Event.dispatch_voice_state_update) num =
+        let ( let* ) = Option.bind in
+        if vstate.channel_id <> Some vchannel_id then num
+        else
+          let is_bot =
+            match
+              let* member = vstate.member in
+              let* user = member.user in
+              let* bot = user.bot in
+              Some bot
+            with
+            | Some bot -> bot
+            | None ->
+                let user =
+                  Discord.Rest.get_user env ~token:state.config.discord_token
+                    ~user_id:vstate.user_id
+                  |> Result.get_ok
+                in
+                Option.value ~default:false user.bot
+          in
+          if is_bot then num else num + 1
+      in
+      StringMap.fold aux (Discord.Agent.get_all_voice_states ~guild_id agent) 0
 
 let query_voice_provider env ~config ~provider ~text =
   match provider with
@@ -203,8 +214,8 @@ let rec consume_message env ~sw state =
       { state with speaking_status = NotReady; msg_queue = Fqueue.empty }
   | Some (#normal_message as msg), state -> (
       try
-        if get_num_of_non_bots_in_my_vc ~guild_id:state.guild_id state.agent = 0
-        then { state with speaking_status = Ready; msg_queue = Fqueue.empty }
+        if get_num_of_non_bots_in_my_vc env state = 0 then
+          { state with speaking_status = Ready; msg_queue = Fqueue.empty }
         else (
           start_speaking env ~sw ~token:state.config.discord_token state msg;
           { state with speaking_status = Speaking })
@@ -303,7 +314,7 @@ let reset_speaking_status state =
   { state with msg_queue = Fqueue.empty; speaking_status = NotReady }
 
 let reset_leave_timer env ~sw state self =
-  if get_num_of_non_bots_in_my_vc ~guild_id:state.guild_id state.agent <> 0 then
+  if get_num_of_non_bots_in_my_vc env state <> 0 then
     { state with leave_timer_id = None }
   else (
     Logs.info (fun m -> m "No one is in the vc. Scheduling leave");
