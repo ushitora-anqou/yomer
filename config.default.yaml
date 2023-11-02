@@ -25,11 +25,11 @@ template_text_message:
   unsummon_not_from_same_vc: "同じボイスチャネルから呼んでください。"
   unsummon_not_joined: "まだボイスチャネルに入っていません。"
   help: |-
-    Yomer v#{{ version }}
+    Yomer v{{ version }} (rev {{ revision }})
 
-    /join  Join the VC
-    /leave Leave the VC
-    /help  Show this help
+    join  Join the VC
+    leave Leave the VC
+    help  Show this help
 template_voice_message:
   i_joined: "こんにちは、yomerです。やさしくしてね。"
   im_leaving: "。お相手はyomerでした。またね。"

@@ -1,3 +1,18 @@
+(rule
+ (targets build_info.ml)
+ (deps
+  (:x build_info.cppo.ml))
+ (action
+  (run
+   %{bin:cppo}
+   -D
+   %{env:REVISION=REVISION}
+   -D
+   %{env:VERSION=VERSION}
+   %{x}
+   -o
+   %{targets})))
+
 (library
  (name yomer)
  (preprocess

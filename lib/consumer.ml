@@ -62,6 +62,23 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
           Logs.info (fun m -> m "Received ping");
           guild |> Guild.ping msg.channel_id;
           state
+      | [ Some "help" ] ->
+          let description =
+            Jingoo.Jg_template.from_string config.template_text_message.help
+              ~models:
+                [
+                  ("version", Tstr Build_info.version);
+                  ("revision", Tstr Build_info.revision);
+                ]
+          in
+          Discord.(
+            Rest.(
+              create_message env ~token:config.discord_token msg.channel_id
+                (make_create_message_param
+                   ~embeds:[ Object.make_embed ~description () ]
+                   ())))
+          |> ignore;
+          state
       | [ Some "join" ] ->
           guild |> Guild.join_by_message msg;
           state
