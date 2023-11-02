@@ -133,19 +133,22 @@ class t =
           (VOICE_STATE_UPDATE
             ({ guild_id = Some guild_id; user_id; session_id; channel_id; _ } as
              payload)) ->
-          channel_id
-          |> Option.iter (fun channel_id ->
-                 let self_user_id = State.me state.st |> Option.get in
-                 if user_id = self_user_id.id then (
-                   (* Start vgw if not started *)
-                   let vgw = Voice_gateway.create () in
-                   if
-                     State.set_voice_if_not_exists state.st ~guild_id
-                       ~channel_id ~gateway:vgw
-                   then Voice_gateway.start vgw env sw state.consumer ~guild_id;
-                   (* Attach voice state *)
-                   let vgw = State.voice state.st guild_id |> Option.get in
-                   Voice_gateway.attach_voice_state ~user_id ~session_id vgw));
+          let self_user_id = State.me state.st |> Option.get in
+          (if user_id = self_user_id.id then
+             match channel_id with
+             | Some channel_id ->
+                 (* Start vgw if not started *)
+                 let vgw = Voice_gateway.create () in
+                 if
+                   State.set_voice_if_not_exists state.st ~guild_id ~channel_id
+                     ~gateway:vgw
+                 then Voice_gateway.start vgw env sw state.consumer ~guild_id;
+                 (* Attach voice state *)
+                 let vgw = State.voice state.st guild_id |> Option.get in
+                 Voice_gateway.attach_voice_state ~user_id ~session_id vgw
+             | None ->
+                 (* Stop vgw if already started *)
+                 State.voice state.st guild_id |> Option.iter Voice_gateway.stop);
 
           State.set_voice_states state.st ~guild_id ~user_id payload;
 

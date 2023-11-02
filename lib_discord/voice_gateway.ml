@@ -12,7 +12,8 @@ type cast_msg =
   [ `VoiceState of voice_state
   | `VoiceServer of voice_server
   | `FrameSource of Eio.Flow.source
-  | `Speaking of int (* ssrc *) * bool (* speaking *) ]
+  | `Speaking of int (* ssrc *) * bool (* speaking *)
+  | `Stop ]
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = [ basic_msg | `Timeout of [ `Heartbeat ] | Ws.Process.msg ]
@@ -147,9 +148,12 @@ class t =
                 m "Handling event failed (voice): %s: %s" (Printexc.to_string e)
                   content);
             `NoReply state)
-      | `WSClose (`Status_code 4015, _) ->
-          Logs.info (fun m ->
-              m "Discord voice server crashed. Trying to resume.");
+      | `WSClose (`Status_code 4006, _) ->
+          (* FIXME: get a new session *)
+          Logs.err (fun m -> m "voice gateway: ws closed with status code 4006");
+          `Stop (Actaa.Process.Stop_reason.Normal, state)
+      | `WSClose _ ->
+          Logs.info (fun m -> m "voice gateway: ws closed. Trying to resume.");
           let ws_conn = self#connect_ws env ~sw state in
           let server_id = state.guild_id in
           let token = (Option.get state.voice_server).token in
@@ -157,9 +161,6 @@ class t =
           Voice_event.(Resume { server_id; session_id; token } |> to_yojson)
           |> send_json ws_conn;
           `NoReply { state with ws_conn = Some ws_conn }
-      | `WSClose (_reason, _) ->
-          Logs.warn (fun m -> m "Voice gateway WS connection closed");
-          `Stop (Actaa.Process.Stop_reason.Normal, state)
 
     method! private handle_cast env ~sw state =
       function
@@ -188,12 +189,17 @@ class t =
             (`Event
               (Event.VoiceSpeaking { guild_id = state.guild_id; speaking }));
           `NoReply state
+      | `Stop ->
+          Logs.info (fun m -> m "voice gateway: stopping normally");
+          `Stop (Actaa.Process.Stop_reason.Normal, state)
   end
 
 let create () = new t
 
 let start t env sw consumer ~guild_id =
   Actaa.Gen_server.start env ~sw { guild_id; consumer } t
+
+let stop t = Actaa.Gen_server.cast t `Stop
 
 let attach_voice_state ~user_id ~session_id t =
   Actaa.Gen_server.cast t (`VoiceState { user_id; session_id })
