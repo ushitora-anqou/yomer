@@ -196,21 +196,13 @@ class t =
                   content
                   (Printexc.get_backtrace ()));
             `NoReply state)
-      | `WSClose ((`Status_code (4000 | 4009) | `Unknown), conn)
-        when Ws.id state.ws_conn = Ws.id conn ->
+      | `WSClose (_, conn) when Ws.id state.ws_conn = Ws.id conn ->
           Logs.info (fun m ->
-              m
-                "Gateway WS connection closed, but it can be resumed. Trying \
-                 to resume.");
+              m "Gateway WS connection closed. Trying to resume.");
           `NoReply (self#resume_ws env ~sw state)
-      | `WSClose (_, conn) ->
-          if Ws.id conn = Ws.id state.ws_conn then (
-            Logs.err (fun m ->
-                m "Gateway WS connection closed with reason Restart");
-            `Stop (Restart, state))
-          else (
-            Logs.info (fun m -> m "Ignoring gateway WS connection closing");
-            `NoReply state)
+      | `WSClose _ ->
+          Logs.info (fun m -> m "Ignoring gateway WS connection closing");
+          `NoReply state
 
     method! private handle_cast env ~sw state =
       function
