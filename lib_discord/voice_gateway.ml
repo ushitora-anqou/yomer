@@ -180,7 +180,8 @@ class t =
               Websocket.Frame.(create ~opcode:Opcode.Text ~content ())
           in
           Voice_event.(
-            Speaking { speaking = (if speaking then 1 else 0); delay = 0; ssrc }
+            Speaking
+              { speaking = (if speaking then 1 else 0); delay = Some 0; ssrc }
             |> to_yojson)
           |> send_json (Option.get state.ws_conn);
           Actaa.Gen_server.cast state.consumer

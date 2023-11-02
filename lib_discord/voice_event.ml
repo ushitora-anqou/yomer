@@ -20,7 +20,11 @@ type select_protocol = { protocol : string; data : select_protocol_data }
 type session_description = { mode : string; secret_key : int list }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
-type speaking = { speaking : int; delay : int; ssrc : int }
+type speaking = {
+  speaking : int;
+  delay : int option; [@yojson.option]
+  ssrc : int;
+}
 [@@yojson.allow_extra_fields] [@@deriving yojson, show]
 
 type hello = { heartbeat_interval : float }
