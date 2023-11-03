@@ -43,6 +43,8 @@ voices:
   "四国めたん":
     provider: ["su_shiki_com", "speaker=2"]
     available_for_all_users: false
+# "ずんだもん":
+#   provider: ["voicevox", "http://127.0.0.1:50021", 3]
   "ずんだもん":
     provider: ["su_shiki_com", "speaker=3"]
   "春日部つむぎ":
