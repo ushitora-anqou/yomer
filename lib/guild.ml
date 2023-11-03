@@ -115,9 +115,11 @@ let query_voice_provider env ~config ~provider ~text =
         failwith
           (Printf.sprintf "Failed to get speech: %s"
              (Cohttp.Code.string_of_status status))
-  | Config.Voicevox (url, style_id) ->
+  | Config.Voicevox style_id ->
       Eio.Switch.run @@ fun sw ->
-      let u = Uri.with_path (Uri.of_string url) "/audio_query" in
+      let u =
+        Uri.with_path (Uri.of_string config.voicevox_endpoint) "/audio_query"
+      in
       let u =
         Uri.with_query u
           [ ("style_id", [ string_of_int style_id ]); ("text", [ text ]) ]
@@ -133,7 +135,9 @@ let query_voice_provider env ~config ~provider ~text =
       then failwith "query_voice_provider: Voicevox: Failed to get query.json";
       let query_json = Discord.Httpx.drain_resp_body resp in
 
-      let u = Uri.with_path (Uri.of_string url) "/synthesis" in
+      let u =
+        Uri.with_path (Uri.of_string config.voicevox_endpoint) "/synthesis"
+      in
       let u = Uri.with_query u [ ("style_id", [ string_of_int style_id ]) ] in
       let resp =
         Discord.Httpx.post env ~sw

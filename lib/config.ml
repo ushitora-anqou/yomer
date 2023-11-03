@@ -4,7 +4,7 @@ type provider =
   | Post of string
   (* `Post url` will send POST request to url *)
   | Su_shiki_com of string (* `Su_shiki_com query` will use su-shiki.com API *)
-  | Voicevox of string * int (* `Voicevox (url, style_id)` will use Voicevox *)
+  | Voicevox of int (* `Voicevox style_id` will use Voicevox *)
 [@@deriving show]
 
 type voice = {
@@ -55,6 +55,7 @@ type t = {
   voices : voice StringMap.t;
   voice_names : string array;
   users : user StringMap.t;
+  voicevox_endpoint : string;
 }
 
 module P = struct
@@ -78,8 +79,8 @@ module P = struct
     match to_list_exn x with
     | [ `String "post"; `String url ] -> Post url
     | [ `String "su_shiki_com"; `String q ] -> Su_shiki_com q
-    | [ `String "voicevox"; `String url; `Float style_id ] ->
-        Voicevox (url, int_of_float style_id)
+    | [ `String "voicevox"; `Float style_id ] ->
+        Voicevox (int_of_float style_id)
     | _ -> failwith "invalid voice"
 
   let try_ name f =
@@ -214,6 +215,7 @@ let of_yaml root =
                } ))
       |> List.to_seq |> StringMap.of_seq
     in
+    let voicevox_endpoint = root |> try_string "voicevox_endpoint" in
     Ok
       {
         discord_token;
@@ -231,5 +233,6 @@ let of_yaml root =
         voices;
         voice_names;
         users;
+        voicevox_endpoint;
       }
   with Failure msg -> Error (`Msg msg)

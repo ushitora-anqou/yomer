@@ -44,7 +44,7 @@ voices:
     provider: ["su_shiki_com", "speaker=2"]
     available_for_all_users: false
 # "ずんだもん":
-#   provider: ["voicevox", "http://127.0.0.1:50021", 3]
+#   provider: ["voicevox", 3]
   "ずんだもん":
     provider: ["su_shiki_com", "speaker=3"]
   "春日部つむぎ":
@@ -105,3 +105,5 @@ users:
     additionally_available_voices:
       - "四国めたん"
       - "YOUR_VOICE_NAME"
+#su_shiki_com_api_key: YOUR_API_KEY
+voicevox_endpoint: "http://127.0.0.1:50021"
