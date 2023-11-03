@@ -309,11 +309,32 @@ let get_voice_channel_from_user_id ~guild_id ~user_id agent =
     (agent |> Discord.Agent.get_voice_states ~guild_id ~user_id)
     (fun x -> x.channel_id)
 
-let send_message env ~token ~channel_id ~content =
-  Discord.Rest.make_create_message_param
-    ~embeds:[ Discord.Object.make_embed ~description:content () ]
-    ()
-  |> Discord.Rest.create_message env ~token channel_id
+let send_message env channel_id state content =
+  let open Jingoo.Jg_types in
+  let description_src, models =
+    match content with
+    | `Summon channel_name ->
+        ( state.config.template_text_message.summon,
+          [ ("channel_name", Tstr channel_name) ] )
+    | `Summon_not_from_vc ->
+        (state.config.template_text_message.summon_not_from_vc, [])
+    | `Summon_but_already_joined ->
+        (state.config.template_text_message.summon_but_already_joined, [])
+    | `Unsummon -> (state.config.template_text_message.unsummon, [])
+    | `Unsummon_not_joined ->
+        (state.config.template_text_message.unsummon_not_joined, [])
+    | `Unsummon_not_from_same_vc ->
+        (state.config.template_text_message.unsummon_not_from_same_vc, [])
+  in
+  let description = Jingoo.Jg_template.from_string ~models description_src in
+  let (_ : _ result) =
+    Discord.Rest.make_create_message_param
+      ~embeds:[ Discord.Object.make_embed ~description () ]
+      ()
+    |> Discord.Rest.create_message env ~token:state.config.discord_token
+         channel_id
+  in
+  ()
 
 let reset_speaking_status state =
   { state with msg_queue = Fqueue.empty; speaking_status = NotReady }
@@ -493,15 +514,11 @@ class t =
             >>= fun vstate -> vstate.channel_id
           with
           | None ->
-              send_message env ~token ~channel_id:msg.channel_id
-                ~content:config.template_text_message.summon_not_from_vc
-              |> ignore;
+              send_message env msg.channel_id state `Summon_not_from_vc;
               `NoReply state
           | Some channel_id when get_my_vc_id ~guild_id agent = Some channel_id
             ->
-              send_message env ~token ~channel_id:msg.channel_id
-                ~content:config.template_text_message.summon_but_already_joined
-              |> ignore;
+              send_message env msg.channel_id state `Summon_but_already_joined;
               `NoReply state
           | Some channel_id ->
               agent |> Discord.Agent.join_channel ~guild_id ~channel_id;
@@ -510,20 +527,13 @@ class t =
               |> Result.iter (fun (channel : Discord.Object.channel) ->
                      channel.name
                      |> Option.iter (fun name ->
-                            send_message env ~token ~channel_id:msg.channel_id
-                              ~content:
-                                (Jingoo.Jg_template.from_string
-                                   ~models:[ ("channel_name", Tstr name) ]
-                                   config.template_text_message.summon)
-                            |> ignore));
+                            send_message env msg.channel_id state (`Summon name)));
 
               `NoReply state)
       | `LeaveByMessage msg -> (
           match get_my_vc_id ~guild_id agent with
           | None ->
-              send_message env ~token ~channel_id:msg.channel_id
-                ~content:config.template_text_message.unsummon_not_joined
-              |> ignore;
+              send_message env msg.channel_id state `Unsummon_not_joined;
               `NoReply state
           | Some my_vc_id -> (
               match
@@ -540,15 +550,11 @@ class t =
                   let state =
                     self#enqueue_message env ~sw state `ScheduledLeave
                   in
-                  send_message env ~token ~channel_id:msg.channel_id
-                    ~content:config.template_text_message.unsummon
-                  |> ignore;
+                  send_message env msg.channel_id state `Unsummon;
                   `NoReply state
               | _ ->
-                  send_message env ~token ~channel_id:msg.channel_id
-                    ~content:
-                      config.template_text_message.unsummon_not_from_same_vc
-                  |> ignore;
+                  send_message env msg.channel_id state
+                    `Unsummon_not_from_same_vc;
                   `NoReply state))
       | `Ping channel_id ->
           if
