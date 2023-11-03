@@ -8,7 +8,7 @@ let parse_command s =
   |> List.map (fun a ->
          (a.(1) |> Option.map substr, a.(2) |> Option.map substr))
 
-let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
+let handle_event token (env : Eio_unix.Stdenv.base) ~sw agent state = function
   | Discord.Event.Dispatch (READY _) -> state
   | Dispatch (MESSAGE_CREATE msg) -> (
       let guild_id = Option.get msg.guild_id in
@@ -19,7 +19,7 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
             Discord.Rest.make_create_message_param
               ~embeds:[ Discord.Object.make_embed ~description:"pong" () ]
               ()
-            |> Discord.Rest.create_message env config msg.channel_id
+            |> Discord.Rest.create_message env ~token msg.channel_id
             |> Result.is_error
           then Logs.err (fun m -> m "Failed to send pong");
           state
@@ -30,7 +30,7 @@ let handle_event config (env : Eio_unix.Stdenv.base) ~sw agent state = function
            with
           | None -> ()
           | Some vstate -> (
-              match vstate.Discord.Voice_state.channel_id with
+              match vstate.Discord.Event.channel_id with
               | None -> ()
               | Some channel_id ->
                   agent |> Discord.Agent.join_channel ~guild_id ~channel_id));
@@ -63,12 +63,13 @@ let () =
     Discord.Intent.encode
       [ GUILDS; GUILD_VOICE_STATES; GUILD_MESSAGES; MESSAGE_CONTENT ]
   in
-  let config = Discord.Config.make ~token ~intents in
 
   Eio_main.run @@ fun env ->
   Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env @@ fun () ->
   Eio.Switch.run @@ fun sw ->
-  let _consumer =
-    Discord.Consumer.start env ~sw config (fun () -> ()) (handle_event config)
+  let _consumer : _ Discord.Consumer.t =
+    Discord.Consumer.start env ~sw ~token ~intents
+      (fun () -> ())
+      (handle_event token)
   in
   ()
