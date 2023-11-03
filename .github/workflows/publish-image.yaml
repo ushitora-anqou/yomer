@@ -47,5 +47,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            YOMER_REVISION="REVISION ${{ steps.meta2.outputs.revision }}"
-            YOMER_VERSION="VERSION ${{  steps.meta2.outputs.version }}"
+            YOMER_REVISION="${{ steps.meta2.outputs.revision }}"
+            YOMER_VERSION="${{ steps.meta2.outputs.version }}"
