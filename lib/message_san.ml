@@ -40,19 +40,14 @@ let replace_mention_with_role =
 
 let replace_channel_id_with_its_name =
   let mention_channel_id_regex = Regex.e {|<#!?([0-9]+)>|} in
-  fun env ~token ~guild_id text ->
+  fun env ~token text ->
     text
     |> Regex.replace mention_channel_id_regex (function
          | [| Some whole; Some channel_id |] -> (
              let whole = Regex.substr whole in
              let channel_id = Regex.substr channel_id in
-             match
-               Discord.Rest.get_guild_channels env ~token ~guild_id
-               |> Result.map
-                    (List.find_opt (fun (c : Discord.Object.channel) ->
-                         c.id = channel_id))
-             with
-             | Ok (Some { name = Some name; _ }) -> "#" ^ name
+             match Discord.Rest.get_channel env ~token ~channel_id with
+             | Ok { name = Some name; _ } -> "#" ^ name
              | _ -> whole)
          | _ -> assert false)
 
@@ -184,7 +179,7 @@ let sanitize env ~token ~guild_id ~text =
   text
   |> replace_mention_with_display_name env ~token ~guild_id
   |> replace_mention_with_role env ~token ~guild_id
-  |> replace_channel_id_with_its_name env ~token ~guild_id
+  |> replace_channel_id_with_its_name env ~token
   |> replace_with_alternatives |> replace_url_with_dummy
   |> replace_code_block_with_dummy |> replace_custom_emoji_with_name
   |> replace_emoji_with_name |> unify_punctuations

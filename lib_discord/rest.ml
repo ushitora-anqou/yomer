@@ -70,3 +70,8 @@ let get_guild_channels (env : Eio_unix.Stdenv.base) ~token ~guild_id =
     ("/guilds/" ^ guild_id ^ "/channels")
     (fun x ->
       x |> Yojson.Safe.Util.to_list |> List.map Object.channel_of_yojson)
+
+let get_channel (env : Eio_unix.Stdenv.base) ~token ~channel_id =
+  request env ~token __FUNCTION__ ~meth:`GET
+    ("/channels/" ^ channel_id)
+    Object.channel_of_yojson
