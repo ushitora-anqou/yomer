@@ -17,7 +17,11 @@ RUN opam-2.1 update && \
 COPY --chown=opam yomer.opam .
 RUN opam-2.1 install . --deps-only
 COPY --chown=opam . .
-RUN eval $(opam-2.1 env) && opam-2.1 install . --deps-only && dune build bin/main.exe
+RUN opam-2.1 install . --deps-only
+
+ARG YOMER_VERSION
+ARG YOMER_REVISION
+RUN eval $(opam-2.1 env) && REVISION="REVISION $YOMER_REVISION" VERSION="VERSION $YOMER_VERSION" dune build bin/main.exe
 
 FROM debian:11-slim
 
