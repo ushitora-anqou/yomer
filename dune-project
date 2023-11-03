@@ -13,7 +13,7 @@
 
 (maintainers "Ushitora Anqou")
 
-(license LICENSE)
+(license MIT)
 
 (documentation https://github.com/ushitora-anqou/yomer)
 

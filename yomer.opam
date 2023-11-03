@@ -4,7 +4,7 @@ synopsis: "A Discord bot"
 description: "A Discord bot"
 maintainer: ["Ushitora Anqou"]
 authors: ["Ushitora Anqou"]
-license: "LICENSE"
+license: "MIT"
 tags: ["discord"]
 homepage: "https://github.com/ushitora-anqou/yomer"
 doc: "https://github.com/ushitora-anqou/yomer"
