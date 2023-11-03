@@ -505,6 +505,18 @@ class t =
               `NoReply state
           | Some channel_id ->
               agent |> Discord.Agent.join_channel ~guild_id ~channel_id;
+
+              Discord.Rest.get_channel env ~token ~channel_id
+              |> Result.iter (fun (channel : Discord.Object.channel) ->
+                     channel.name
+                     |> Option.iter (fun name ->
+                            send_message env ~token ~channel_id:msg.channel_id
+                              ~content:
+                                (Jingoo.Jg_template.from_string
+                                   ~models:[ ("channel_name", Tstr name) ]
+                                   config.template_text_message.summon)
+                            |> ignore));
+
               `NoReply state)
       | `LeaveByMessage msg -> (
           match get_my_vc_id ~guild_id agent with
@@ -528,6 +540,9 @@ class t =
                   let state =
                     self#enqueue_message env ~sw state `ScheduledLeave
                   in
+                  send_message env ~token ~channel_id:msg.channel_id
+                    ~content:config.template_text_message.unsummon
+                  |> ignore;
                   `NoReply state
               | _ ->
                   send_message env ~token ~channel_id:msg.channel_id
