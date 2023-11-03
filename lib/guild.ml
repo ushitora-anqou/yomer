@@ -421,6 +421,7 @@ class t =
       match activity with
       | `I'm_joining ->
           let state = reset_speaking_status state in
+          let state = reset_leave_timer env ~sw state self in
           react tmpl.i_joined state
       | `Someone's_joining ->
           let state = reset_leave_timer env ~sw state self in
