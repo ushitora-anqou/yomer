@@ -497,6 +497,12 @@ class t =
                 ~content:config.template_text_message.summon_not_from_vc
               |> ignore;
               `NoReply state
+          | Some channel_id when get_my_vc_id ~guild_id agent = Some channel_id
+            ->
+              send_message env ~token ~channel_id:msg.channel_id
+                ~content:config.template_text_message.summon_but_already_joined
+              |> ignore;
+              `NoReply state
           | Some channel_id ->
               agent |> Discord.Agent.join_channel ~guild_id ~channel_id;
               `NoReply state)
