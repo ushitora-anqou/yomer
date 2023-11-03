@@ -506,25 +506,35 @@ class t =
           | Some channel_id ->
               agent |> Discord.Agent.join_channel ~guild_id ~channel_id;
               `NoReply state)
-      | `LeaveByMessage msg ->
-          let user_vc_id =
-            agent
-            |> get_voice_channel_from_user_id ~guild_id ~user_id:msg.author.id
-          in
-          let my_vc_id = get_my_vc_id ~guild_id agent in
-          if user_vc_id = my_vc_id then
-            let state =
-              self#enqueue_message env ~sw state
-                (`Bare config.template_voice_message.im_leaving)
-            in
-            let state = self#enqueue_message env ~sw state (`Wait 0.5) in
-            let state = self#enqueue_message env ~sw state `ScheduledLeave in
-            `NoReply state
-          else (
-            send_message env ~token ~channel_id:msg.channel_id
-              ~content:config.template_text_message.unsummon_not_from_same_vc
-            |> ignore;
-            `NoReply state)
+      | `LeaveByMessage msg -> (
+          match get_my_vc_id ~guild_id agent with
+          | None ->
+              send_message env ~token ~channel_id:msg.channel_id
+                ~content:config.template_text_message.unsummon_not_joined
+              |> ignore;
+              `NoReply state
+          | Some my_vc_id -> (
+              match
+                agent
+                |> get_voice_channel_from_user_id ~guild_id
+                     ~user_id:msg.author.id
+              with
+              | Some user_vc_id when user_vc_id = my_vc_id ->
+                  let state =
+                    self#enqueue_message env ~sw state
+                      (`Bare config.template_voice_message.im_leaving)
+                  in
+                  let state = self#enqueue_message env ~sw state (`Wait 0.5) in
+                  let state =
+                    self#enqueue_message env ~sw state `ScheduledLeave
+                  in
+                  `NoReply state
+              | _ ->
+                  send_message env ~token ~channel_id:msg.channel_id
+                    ~content:
+                      config.template_text_message.unsummon_not_from_same_vc
+                  |> ignore;
+                  `NoReply state))
       | `Ping channel_id ->
           if
             Discord.Rest.make_create_message_param
