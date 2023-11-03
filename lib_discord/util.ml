@@ -1,4 +1,5 @@
 module StringMap = Map.Make (String)
+module Fqueue = Fqueue.Bootstrapped
 
 module With_mutex = struct
   type 'a t = { mtx : Eio.Mutex.t; v : 'a }

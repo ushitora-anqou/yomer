@@ -35,7 +35,7 @@ type state = {
   seq_num : int;
   timestamp : int;
   opus_encoder : Opus.Encoder.t;
-  queued_sources : Eio.Flow.source list (* reversed order *);
+  queued_sources : Eio.Flow.source Fqueue.t;
   speaking_source : Eio.Flow.source option;
 }
 [@@deriving make]
@@ -123,15 +123,11 @@ let start_sending_frames_from_source env ~sw state self =
     match state.speaking_source with
     | Some _ -> state
     | None -> (
-        match List.rev state.queued_sources with
-        | [] -> state
-        | x :: xs ->
+        match Fqueue.take_opt state.queued_sources with
+        | None, _ -> state
+        | speaking_source, queued_sources ->
             send_speaking state true;
-            {
-              state with
-              speaking_source = Some x;
-              queued_sources = List.rev xs;
-            })
+            { state with speaking_source; queued_sources })
   in
 
   match state.speaking_source with
@@ -200,7 +196,9 @@ class t =
       let opus_encoder =
         Opus.Encoder.create ~sample_rate ~channels ~application
       in
-      make_state ~socket ~dst ~ssrc ~vgw ~seq_num ~timestamp ~opus_encoder ()
+      let queued_sources = Fqueue.empty in
+      make_state ~socket ~dst ~ssrc ~vgw ~seq_num ~timestamp ~opus_encoder
+        ~queued_sources ()
 
     method! private terminate _ ~sw:_ state _reason = Eio.Net.close state.socket
 
@@ -231,7 +229,7 @@ class t =
       | `FrameSource _ when Option.is_none state.secret_key -> `NoReply state
       | `FrameSource src -> (
           let state =
-            { state with queued_sources = src :: state.queued_sources }
+            { state with queued_sources = Fqueue.add state.queued_sources src }
           in
           match state.speaking_source with
           | Some _ -> `NoReply state
