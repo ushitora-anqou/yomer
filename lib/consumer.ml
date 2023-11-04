@@ -44,7 +44,8 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
                ~channel_id;
           state
       | _ -> state)
-  | Dispatch (MESSAGE_CREATE msg) when msg.author.bot <> Some true -> (
+  | Dispatch (MESSAGE_CREATE msg)
+    when msg.content <> "" && msg.author.bot <> Some true -> (
       let guild_id = Option.get msg.guild_id in
       let can_use_debug_command =
         config.users
