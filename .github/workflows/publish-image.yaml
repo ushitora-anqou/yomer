@@ -39,7 +39,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - id: meta2
-        run: echo -e "revision=$(git rev-parse HEAD)\nversion=$(git describe --tags)" >> "$GITHUB_OUTPUT"
+        run: echo -e "revision=$(git rev-parse --short HEAD)\nversion=$(git describe --tags)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5.0.0
