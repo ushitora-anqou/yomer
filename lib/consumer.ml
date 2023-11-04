@@ -113,7 +113,8 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
 let start env ~sw ~(config : Config.t) =
   let _consumer : _ Discord.Consumer.t =
     Discord.Consumer.start env ~sw ~token:config.discord_token
-      ~intents:config.gateway_intents
+      ~intents:config.gateway_intents ~ffmpeg_path:config.ffmpeg_path
+      ~ffmpeg_options:config.ffmpeg_options
       (fun () -> { guilds = StringMap.empty })
       (handle_event ~config)
   in

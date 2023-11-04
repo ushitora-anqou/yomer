@@ -11,12 +11,19 @@ type leave_channel = { guild_id : string }
 
 type play_voice = {
   guild_id : string;
-  src : [ `FrameSource of Eio.Flow.source_ty Eio.Resource.t ];
+  src : [ `Pipe of Eio.Flow.source_ty Eio.Resource.t | `Ytdl of string ];
 }
 
 type get_voice_states = { guild_id : string; user_id : string }
 type consumer = Event.t Actaa.Gen_server.t_cast
-type init_arg = { token : string; intents : int; consumer : consumer }
+
+type init_arg = {
+  token : string;
+  intents : int;
+  consumer : consumer;
+  ffmpeg_path : string;
+  ffmpeg_options : string list;
+}
 
 type call_msg =
   [ `GetVoiceStates of get_voice_states
@@ -37,21 +44,42 @@ type cast_msg =
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = basic_msg
-type state = { st : State.t; gw : Gateway.t; consumer : consumer }
+
+type state = {
+  st : State.t;
+  gw : Gateway.t;
+  consumer : consumer;
+  ffmpeg_path : string;
+  ffmpeg_options : string list;
+}
+
+let spawn_youtubedl process_mgr ~sw ~stdout url =
+  let executable =
+    Sys.getenv_opt "YOUTUBEDL_PATH"
+    |> Option.value ~default:"/usr/bin/youtube-dl"
+  in
+  Eio.Process.spawn ~sw process_mgr ~stdout ~executable
+    [ executable; "-f"; "bestaudio"; "-o"; "-"; "-q"; "--no-warnings"; url ]
+
+let spawn_ffmpeg process_mgr ~sw ~stdin ~stdout ~path:(executable : string)
+    ~options =
+  Eio.Process.spawn ~sw process_mgr ~stdin ~stdout ~executable
+    (executable :: options)
 
 class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
-    method private init env ~sw { token; intents; consumer } =
+    method private init env ~sw
+        { token; intents; consumer; ffmpeg_path; ffmpeg_options } =
       let st = State.start env ~sw in
       let gw =
         Gateway.spawn env ~sw ~token ~intents ~state:st
           ~consumer:(self :> Gateway.consumer)
       in
-      { st; gw; consumer }
+      { st; gw; consumer; ffmpeg_path; ffmpeg_options }
 
-    method! private handle_cast _env ~sw:_ ({ st; gw; consumer; _ } as state) =
+    method! private handle_cast env ~sw ({ st; gw; consumer; _ } as state) =
       function
       | `Event ev ->
           Actaa.Gen_server.cast consumer ev;
@@ -68,8 +96,25 @@ class t =
           (match State.voice st guild_id with
           | None -> Logs.warn (fun m -> m "VoiceGateway is not available")
           | Some gateway -> (
+              let process_mgr = Eio.Stdenv.process_mgr env in
+              let play src =
+                let src', sink' = Eio.Process.pipe ~sw process_mgr in
+                let _p =
+                  spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink'
+                    ~path:state.ffmpeg_path ~options:state.ffmpeg_options
+                in
+                Eio.Flow.close sink';
+                Voice_gateway.send_frame_source gateway
+                  (src' :> Eio.Flow.source_ty Eio.Resource.t)
+              in
               match src with
-              | `FrameSource src -> Voice_gateway.send_frame_source gateway src));
+              | `Pipe (src : Eio.Flow.source_ty Eio.Resource.t) -> play src
+              | `Ytdl url ->
+                  let src, sink = Eio.Process.pipe ~sw process_mgr in
+                  let _p1 = spawn_youtubedl process_mgr ~sw ~stdout:sink url in
+                  play src;
+                  Eio.Flow.close src;
+                  Eio.Flow.close sink));
           `NoReply state
       | `ForceResumeGateway ->
           Gateway.force_resume gw;
@@ -101,54 +146,8 @@ let get_voice_states ~guild_id ~user_id (agent : t) =
   | `GetVoiceStates v -> v
   | _ -> assert false
 
-let spawn_youtubedl process_mgr ~sw ~stdout url =
-  let executable =
-    Sys.getenv_opt "YOUTUBEDL_PATH"
-    |> Option.value ~default:"/usr/bin/youtube-dl"
-  in
-  Eio.Process.spawn ~sw process_mgr ~stdout ~executable
-    [ executable; "-f"; "bestaudio"; "-o"; "-"; "-q"; "--no-warnings"; url ]
-
-let spawn_ffmpeg process_mgr ~sw ~stdin ~stdout =
-  let executable =
-    Sys.getenv_opt "FFMPEG_PATH" |> Option.value ~default:"/usr/bin/ffmpeg"
-  in
-  Eio.Process.spawn ~sw process_mgr ~stdin ~stdout ~executable
-    [
-      executable;
-      "-i";
-      "pipe:0";
-      "-ac";
-      "2";
-      "-ar";
-      "48000";
-      "-f";
-      "s16le";
-      "-loglevel";
-      "quiet";
-      "pipe:1";
-    ]
-
-let play_voice process_mgr ~sw ~guild_id ~src (agent : t) =
-  let play src =
-    let src', sink' = Eio.Process.pipe ~sw process_mgr in
-    let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
-    Eio.Flow.close sink';
-    Actaa.Gen_server.cast agent
-      (`PlayVoice
-        {
-          guild_id;
-          src = `FrameSource (src' :> Eio.Flow.source_ty Eio.Resource.t);
-        })
-  in
-  match src with
-  | `Pipe (src : Eio.Flow.source_ty Eio.Resource.t) -> play src
-  | `Ytdl url ->
-      let src, sink = Eio.Process.pipe ~sw process_mgr in
-      let _p1 = spawn_youtubedl process_mgr ~sw ~stdout:sink url in
-      play src;
-      Eio.Flow.close src;
-      Eio.Flow.close sink
+let play_voice ~guild_id ~src (agent : t) =
+  Actaa.Gen_server.cast agent (`PlayVoice { guild_id; src })
 
 let me (agent : t) =
   match Actaa.Gen_server.call agent `Me with `Me v -> v | _ -> assert false

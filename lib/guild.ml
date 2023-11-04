@@ -169,7 +169,7 @@ let format_discord_message (config : Config.t) (msg : Discord.Object.message) =
 
   content
 
-let start_speaking env ~sw ~token state msg =
+let start_speaking env ~sw:_ ~token state msg =
   let guild_id = state.guild_id in
   let config = state.config in
 
@@ -229,10 +229,7 @@ let start_speaking env ~sw ~token state msg =
     query_voice_provider env ~config:state.config ~provider ~text:content
   in
   let src = Eio.Flow.string_source wav in
-  state.agent
-  |> Discord.Agent.play_voice
-       (Eio.Stdenv.process_mgr env)
-       ~sw ~guild_id ~src:(`Pipe src)
+  state.agent |> Discord.Agent.play_voice ~guild_id ~src:(`Pipe src)
 
 let push_msg_queue msg state =
   { state with msg_queue = Fqueue.push state.msg_queue msg }
