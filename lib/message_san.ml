@@ -186,5 +186,6 @@ let sanitize env (config : Config.t) ~guild_id ~text =
   |> replace_code_block_with_dummy ~dummy
   |> replace_custom_emoji_with_name |> replace_emoji_with_name
   |> unify_punctuations |> replace_non_sjis_with_empty
-  |> omit_if_too_long ~dummy:message_omitted ~max_length:100
+  |> omit_if_too_long ~dummy:message_omitted
+       ~max_length:config.message_length_limit
   |> String.trim
