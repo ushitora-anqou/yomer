@@ -48,5 +48,10 @@ type guild_member = {
 }
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]
 
-type channel = { id : string; name : string option }
+type channel = {
+  id : string;
+  name : string option;
+  owner_id : string option; [@yojson.option]
+  guild_id : string option; [@yojson.option]
+}
 [@@yojson.allow_extra_fields] [@@deriving yojson, show, make]

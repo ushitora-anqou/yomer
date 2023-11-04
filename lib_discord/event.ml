@@ -55,6 +55,7 @@ type dispatch =
   | MESSAGE_UPDATE of dispatch_message_update
   | READY of dispatch_ready
   | RESUMED of dispatch_dummy
+  | THREAD_CREATE of Object.channel
   | VOICE_CHANNEL_STATUS_UPDATE of dispatch_voice_channel_status_update
   | VOICE_SERVER_UPDATE of dispatch_voice_server_update
   | VOICE_STATE_UPDATE of dispatch_voice_state_update
