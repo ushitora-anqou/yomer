@@ -16,6 +16,7 @@
   eio.core
   eio.unix
   fqueue
+  httpx
   ipaddr
   logs
   logs.fmt

@@ -15,8 +15,8 @@ let request ~meth ?body env ~token path =
         (body |> Option.fold ~none:"" ~some:Yojson.Safe.to_string));
   let body = body |> Option.map (fun x -> `Fixed (Yojson.Safe.to_string x)) in
   Eio.Switch.run @@ fun sw ->
-  let resp = Httpx.request ~meth ~headers ?body env ~sw url in
-  let body = Httpx.drain_resp_body resp in
+  let resp = Httpx.Http.request ~meth ~headers ?body env ~sw url in
+  let body = Httpx.Http.drain_resp_body resp in
   let body =
     try body |> Yojson.Safe.from_string |> Option.some with _ -> None
   in

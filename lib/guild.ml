@@ -84,10 +84,10 @@ let query_voice_provider env ~config ~provider ~text =
   match provider with
   | Config.Post endpoint ->
       Eio.Switch.run @@ fun sw ->
-      let resp = Discord.Httpx.post env ~sw ~body:(`Fixed text) endpoint in
+      let resp = Httpx.Http.post env ~sw ~body:(`Fixed text) endpoint in
       let status = fst resp |> Http.Response.status in
       if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
-        Discord.Httpx.drain_resp_body resp
+        Httpx.Http.drain_resp_body resp
       else
         failwith
           (Printf.sprintf "Failed to get speech: %s"
@@ -104,13 +104,13 @@ let query_voice_provider env ~config ~provider ~text =
         Uri.encoded_of_query [ ("text", [ text ]); ("key", [ key ]) ]
       in
       let resp =
-        Discord.Httpx.post env ~sw
+        Httpx.Http.post env ~sw
           ~headers:[ ("content-type", "application/x-www-form-urlencoded") ]
           ~body:(`Fixed body) endpoint
       in
       let status = fst resp |> Http.Response.status in
       if status |> Cohttp.Code.code_of_status |> Cohttp.Code.is_success then
-        Discord.Httpx.drain_resp_body resp
+        Httpx.Http.drain_resp_body resp
       else
         failwith
           (Printf.sprintf "Failed to get speech: %s"
@@ -125,7 +125,7 @@ let query_voice_provider env ~config ~provider ~text =
           [ ("style_id", [ string_of_int style_id ]); ("text", [ text ]) ]
       in
       let resp =
-        Discord.Httpx.post env ~sw
+        Httpx.Http.post env ~sw
           ~headers:[ ("content-type", "application/x-www-form-urlencoded") ]
           (Uri.to_string u)
       in
@@ -133,14 +133,14 @@ let query_voice_provider env ~config ~provider ~text =
         fst resp |> Http.Response.status |> Cohttp.Code.code_of_status
         |> Cohttp.Code.is_success |> not
       then failwith "query_voice_provider: Voicevox: Failed to get query.json";
-      let query_json = Discord.Httpx.drain_resp_body resp in
+      let query_json = Httpx.Http.drain_resp_body resp in
 
       let u =
         Uri.with_path (Uri.of_string config.voicevox_endpoint) "/synthesis"
       in
       let u = Uri.with_query u [ ("style_id", [ string_of_int style_id ]) ] in
       let resp =
-        Discord.Httpx.post env ~sw
+        Httpx.Http.post env ~sw
           ~headers:[ ("content-type", "application/json") ]
           ~body:(`Fixed query_json) (Uri.to_string u)
       in
@@ -148,7 +148,7 @@ let query_voice_provider env ~config ~provider ~text =
         fst resp |> Http.Response.status |> Cohttp.Code.code_of_status
         |> Cohttp.Code.is_success |> not
       then failwith "query_voice_provider: Voicevox: Failed to get speech";
-      Discord.Httpx.drain_resp_body resp
+      Httpx.Http.drain_resp_body resp
 
 let format_discord_message (msg : Discord.Object.message) =
   (* Concat dummy to content if there are attachments *)

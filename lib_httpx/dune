@@ -1,0 +1,17 @@
+(library
+ (name httpx)
+ (libraries
+  base64
+  cohttp
+  cohttp-eio
+  cstruct
+  domain-name
+  eio
+  eio.core
+  eio.unix
+  mirage-crypto-rng
+  tls
+  tls-eio
+  uri
+  websocket
+  x509))
