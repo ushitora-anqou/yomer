@@ -22,12 +22,15 @@ type connection_param = {
 type init_arg = { ip : string; port : int; ssrc : int; vgw : vgw }
 type call_msg = [ `DiscoverIP ]
 type call_reply = [ `DiscoverIP of string (* ip *) * int (* port *) ]
-type cast_msg = [ `SecretKey of int list | `FrameSource of Eio.Flow.source ]
+
+type cast_msg =
+  [ `SecretKey of int list | `FrameSource of Eio.Flow.source_ty Eio.Resource.t ]
+
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = [ basic_msg | `Timeout of string ]
 
 type state = {
-  socket : Eio.Net.datagram_socket;
+  socket : Eio_unix.Net.datagram_socket_ty Eio.Resource.t;
   dst : Eio.Net.Sockaddr.datagram;
   ssrc : int;
   secret_key : Sodium.secret Sodium.Secret_box.key option;
@@ -35,8 +38,8 @@ type state = {
   seq_num : int;
   timestamp : int;
   opus_encoder : Opus.Encoder.t;
-  queued_sources : Eio.Flow.source Fqueue.t;
-  speaking_source : Eio.Flow.source option;
+  queued_sources : Eio.Flow.source_ty Eio.Resource.t Fqueue.t;
+  speaking_source : Eio.Flow.source_ty Eio.Resource.t option;
 }
 [@@deriving make]
 

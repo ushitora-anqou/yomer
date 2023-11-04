@@ -17,7 +17,7 @@ val create : unit -> t
 val connect :
   Eio_unix.Stdenv.base -> Eio.Switch.t -> t -> connection_param -> unit
 
-val send_frame_source : t -> Eio.Flow.source -> unit
+val send_frame_source : t -> Eio.Flow.source_ty Eio.Resource.t -> unit
 val attach_secret_key : t -> int list -> unit
 val close : t -> unit
 val discover_ip : t -> string * int

@@ -11,7 +11,7 @@ type voice_server = { token : string; endpoint : string }
 type cast_msg =
   [ `VoiceState of voice_state
   | `VoiceServer of voice_server
-  | `FrameSource of Eio.Flow.source
+  | `FrameSource of Eio.Flow.source_ty Eio.Resource.t
   | `Speaking of int (* ssrc *) * bool (* speaking *)
   | `Stop ]
 

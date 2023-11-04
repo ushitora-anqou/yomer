@@ -25,12 +25,8 @@
   alcotest
   ctypes
   ctypes-foreign
-  (cohttp
-   (>= 6.0.0~alpha2))
-  (cohttp-eio
-   (>= 6.0.0~alpha2))
   (eio_main
-   (<= 0.11))
+   (>= 0.12))
   jingoo
   mirage-clock-unix
   mirage-crypto-rng-eio
@@ -39,11 +35,16 @@
   ppx_yojson_conv
   tls-eio
   uuseg
-  ;websocket
-  ;websocket-eio
   x509
   yaml
-  yojson)
+  yojson
+  ;
+  ; vvv pinned packages vvv
+  ;
+  ;websocket
+  ;cohttp
+  ;cohttp-eio
+  )
  (tags (discord)))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project

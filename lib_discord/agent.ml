@@ -11,7 +11,7 @@ type leave_channel = { guild_id : string }
 
 type play_voice = {
   guild_id : string;
-  src : [ `FrameSource of Eio.Flow.source ];
+  src : [ `FrameSource of Eio.Flow.source_ty Eio.Resource.t ];
 }
 
 type get_voice_states = { guild_id : string; user_id : string }
@@ -135,10 +135,14 @@ let play_voice process_mgr ~sw ~guild_id ~src (agent : t) =
     let _p = spawn_ffmpeg process_mgr ~sw ~stdin:src ~stdout:sink' in
     Eio.Flow.close sink';
     Actaa.Gen_server.cast agent
-      (`PlayVoice { guild_id; src = `FrameSource (src' :> Eio.Flow.source) })
+      (`PlayVoice
+        {
+          guild_id;
+          src = `FrameSource (src' :> Eio.Flow.source_ty Eio.Resource.t);
+        })
   in
   match src with
-  | `Pipe (src : Eio.Flow.source) -> play src
+  | `Pipe (src : Eio.Flow.source_ty Eio.Resource.t) -> play src
   | `Ytdl url ->
       let src, sink = Eio.Process.pipe ~sw process_mgr in
       let _p1 = spawn_youtubedl process_mgr ~sw ~stdout:sink url in
