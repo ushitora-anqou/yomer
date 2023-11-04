@@ -35,13 +35,13 @@
   ppx_yojson_conv
   tls-eio
   uuseg
+  websocket
   x509
   yaml
   yojson
   ;
   ; vvv pinned packages vvv
   ;
-  ;websocket
   ;cohttp
   ;cohttp-eio
   )
