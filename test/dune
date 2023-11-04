@@ -1,2 +1,3 @@
-(test
- (name yomer))
+(tests
+ (names test_yomer)
+ (libraries alcotest yomer))
