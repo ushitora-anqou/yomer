@@ -17,7 +17,7 @@ Text `!ymr join` to join Yomer to your voice channel. Yomer will then read all t
 Set up [OPAM](https://opam.ocaml.org/) first. Then, run the following steps:
 
 ```
-opam switch create --no-install . 5.1.0
+opam switch create --no-install . 5.0.0
 opam pin cohttp https://github.com/mirage/ocaml-cohttp.git#v6.0.0_beta1
 opam pin cohttp-eio https://github.com/mirage/ocaml-cohttp.git#v6.0.0_beta1
 opam pin sodium https://github.com/ahrefs/ocaml-sodium.git#734eccbb47e7545a459a504188f1da8dc0bd018e
