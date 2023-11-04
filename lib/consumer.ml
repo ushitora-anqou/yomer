@@ -98,6 +98,12 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
        let* guild = get_guild guild_id state in
        Guild.cast_voice_state_update payload guild);
       state
+  | Dispatch (THREAD_CREATE payload) ->
+      (let ( let* ) x y = Option.iter y x in
+       let* guild_id = payload.guild_id in
+       let* guild = get_guild guild_id state in
+       Guild.cast_thread_create payload guild);
+      state
   | VoiceReady { guild_id; _ } ->
       Logs.info (fun m -> m "Voice ready for guild %s" guild_id);
       (match StringMap.find_opt guild_id state.guilds with

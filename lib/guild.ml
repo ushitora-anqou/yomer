@@ -21,7 +21,8 @@ type cast_msg =
   | `VoiceReady
   | `VoiceSpeaking of bool
   | `Ping of string (* channel_id *)
-  | `VoiceStateUpdateArrived of Discord.Event.dispatch_voice_state_update ]
+  | `VoiceStateUpdateArrived of Discord.Event.dispatch_voice_state_update
+  | `ThreadCreate of Discord.Object.channel ]
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = [ basic_msg | `Timeout of [ `Leave of string | `Wait ] ]
@@ -443,7 +444,8 @@ class t =
           (* Enqueue only bare messages to speak out the welcome message *)
           let state = self#enqueue_message env ~sw state msg in
           `NoReply state
-      | NotReady, `MessageArrived _ -> (* Just ignore *) `NoReply state
+      | NotReady, (`MessageArrived _ | `ThreadCreate _) ->
+          (* Just ignore *) `NoReply state
       | NotReady, `VoiceReady ->
           let state = self#consume_message env ~sw state in
           `NoReply state
@@ -497,6 +499,37 @@ class t =
           | None, _ | _, None -> `NoReply state
           | Some activity, Some member ->
               self#handle_activity env ~sw state member activity)
+      | ( _,
+          `ThreadCreate
+            {
+              name = Some thread_name;
+              owner_id = Some user_id;
+              guild_id = Some guild_id;
+              _;
+            } ) ->
+          let state =
+            match
+              Discord.Rest.get_guild_member env
+                ~token:state.config.discord_token ~guild_id ~user_id
+            with
+            | Error _ -> state
+            | Ok member -> (
+                match get_display_name member with
+                | None -> state
+                | Some user_name ->
+                    let msg =
+                      Jingoo.Jg_template.from_string
+                        ~models:
+                          [
+                            ("thread_name", Tstr thread_name);
+                            ("user_name", Tstr user_name);
+                          ]
+                        state.config.template_voice_message.created_thread
+                    in
+                    self#enqueue_message env ~sw state (`Bare msg))
+          in
+          `NoReply state
+      | _, `ThreadCreate _ -> `NoReply state
       | _, (`JoinByMessage _ | `LeaveByMessage _ | `Ping _) ->
           failwith "invalid state"
 
@@ -601,3 +634,6 @@ let ping channel_id t = Actaa.Gen_server.cast t (`Ping channel_id)
 
 let cast_voice_state_update payload t =
   Actaa.Gen_server.cast t (`VoiceStateUpdateArrived payload)
+
+let cast_thread_create payload t =
+  Actaa.Gen_server.cast t (`ThreadCreate payload)
