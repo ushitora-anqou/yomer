@@ -37,13 +37,14 @@ type template_voice_message = {
   started_live : string;
   stopped_live : string;
   created_thread : string;
+  dummy : string;
+  message_omitted : string;
 }
 
 type t = {
   discord_token : string;
   gateway_intents : int;
   announcer : string;
-  dummy_message : string;
   ffmpeg_path : string;
   ffmpeg_options : string list;
   message_length_limit : int;
@@ -126,6 +127,8 @@ let template_voice_message_of_yojson root =
   let started_live = root |> try_string "started_live" in
   let stopped_live = root |> try_string "stopped_live" in
   let created_thread = root |> try_string "created_thread" in
+  let dummy = root |> try_string "dummy" in
+  let message_omitted = root |> try_string "message_omitted" in
   {
     i_joined;
     im_leaving;
@@ -134,6 +137,8 @@ let template_voice_message_of_yojson root =
     started_live;
     stopped_live;
     created_thread;
+    dummy;
+    message_omitted;
   }
 
 let of_yaml root =
@@ -147,7 +152,6 @@ let of_yaml root =
       |> Discord.Intent.encode
     in
     let announcer = root |> try_string "announcer" in
-    let dummy_message = root |> try_string "dummy_message" in
     let ffmpeg_path = root |> try_string "ffmpeg_path" in
     let ffmpeg_options =
       try_ "ffmpeg_options" @@ fun n ->
@@ -221,7 +225,6 @@ let of_yaml root =
         discord_token;
         gateway_intents;
         announcer;
-        dummy_message;
         ffmpeg_path;
         ffmpeg_options;
         message_length_limit;

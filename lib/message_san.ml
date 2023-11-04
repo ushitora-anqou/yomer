@@ -1,5 +1,3 @@
-let dummy_text = "ちくわ大明神。"
-
 let replace_mention_with_display_name =
   let mention_user_id_regex = Regex.e {|<@!?([0-9]+)>|} in
   fun env ~token ~guild_id text ->
@@ -68,16 +66,16 @@ let replace_with_alternatives =
            Regex.replace regex (fun _ -> replacement) text)
          text
 
-let replace_url_with_dummy =
+let replace_url_with_dummy ~dummy =
   let re =
     Regex.e ~flags:[ `UTF; `UCP ]
       {|(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:\/?#[\]@!\$%&'\(\)\*\+,;=.]+|}
   in
-  fun text -> Regex.replace re (fun _ -> dummy_text) text
+  fun text -> Regex.replace re (fun _ -> dummy) text
 
-let replace_code_block_with_dummy =
+let replace_code_block_with_dummy ~dummy =
   let re = Regex.e ~flags:[ `DOTALL ] {|```.+```|} in
-  fun text -> Regex.replace re (fun _ -> dummy_text) text
+  fun text -> Regex.replace re (fun _ -> dummy) text
 
 let replace_custom_emoji_with_name =
   let re = {|<:([^:]+):[0-9]+>|} in
@@ -158,7 +156,7 @@ let replace_non_sjis_with_empty text =
   in
   text |> to_codepoints |> List.filter Table.Shift_jis.check |> of_codepoints
 
-let omit_if_too_long ~max_length text =
+let omit_if_too_long ~dummy ~max_length text =
   let fold_utf8 x y = Uuseg_string.fold_utf_8 `Grapheme_cluster x y in
   let utf8_length = fold_utf8 (fun x _ -> x + 1) 0 in
   let utf8_sub length s =
@@ -173,16 +171,20 @@ let omit_if_too_long ~max_length text =
   if utf8_length text <= max_length then text
   else
     let text = utf8_sub max_length text in
-    text ^ "。以下ちくわ大明神。"
+    text ^ "。" ^ dummy
 
-let sanitize env ~token ~guild_id ~text =
+let sanitize env (config : Config.t) ~guild_id ~text =
+  let token = config.discord_token in
+  let dummy = config.template_voice_message.dummy in
+  let message_omitted = config.template_voice_message.message_omitted in
   text
   |> replace_mention_with_display_name env ~token ~guild_id
   |> replace_mention_with_role env ~token ~guild_id
   |> replace_channel_id_with_its_name env ~token
-  |> replace_with_alternatives |> replace_url_with_dummy
-  |> replace_code_block_with_dummy |> replace_custom_emoji_with_name
-  |> replace_emoji_with_name |> unify_punctuations
-  |> replace_non_sjis_with_empty
-  |> omit_if_too_long ~max_length:100
+  |> replace_with_alternatives
+  |> replace_url_with_dummy ~dummy
+  |> replace_code_block_with_dummy ~dummy
+  |> replace_custom_emoji_with_name |> replace_emoji_with_name
+  |> unify_punctuations |> replace_non_sjis_with_empty
+  |> omit_if_too_long ~dummy:message_omitted ~max_length:100
   |> String.trim

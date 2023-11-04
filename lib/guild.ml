@@ -150,12 +150,12 @@ let query_voice_provider env ~config ~provider ~text =
       then failwith "query_voice_provider: Voicevox: Failed to get speech";
       Httpx.Http.drain_resp_body resp
 
-let format_discord_message (msg : Discord.Object.message) =
+let format_discord_message (config : Config.t) (msg : Discord.Object.message) =
   (* Concat dummy to content if there are attachments *)
   let content =
     match msg.attachments with
     | None | Some [] -> msg.content
-    | _ -> Message_san.dummy_text ^ msg.content
+    | _ -> config.template_voice_message.dummy ^ msg.content
   in
 
   (* Concat sticker names to content *)
@@ -177,10 +177,10 @@ let start_speaking env ~sw ~token state msg =
     match msg with
     | `Bare content -> content
     | `Discord msg ->
-        let content = format_discord_message msg in
+        let content = format_discord_message config msg in
         content
   in
-  let content = Message_san.sanitize env ~token ~guild_id ~text:content in
+  let content = Message_san.sanitize env config ~guild_id ~text:content in
   if content = "" then failwith "sanitized message is empty";
 
   let provider =

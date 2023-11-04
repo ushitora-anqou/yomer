@@ -4,7 +4,6 @@ gateway_intents:
   - "GUILD_VOICE_STATES"
   - "GUILD_MESSAGES"
   - "MESSAGE_CONTENT"
-dummy_message: "ちくわ大明神。"
 ffmpeg_path: "/usr/bin/ffmpeg"
 ffmpeg_options: [
   "-i", "pipe:0",
@@ -38,6 +37,8 @@ template_voice_message:
   started_live: "{{ user_name }}さんがライブを始めました。"
   stopped_live: "{{ user_name }}さんがライブを終了しました。"
   created_thread: "{{ user_name }}さんがスレッド「{{ thread_name }}」を作りました。"
+  dummy: "ちくわ大明神。"
+  message_omitted: "以下ちくわ大明神。"
 announcer: "ずんだもん"
 voices:
   "四国めたん":
