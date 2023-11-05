@@ -13,6 +13,7 @@ type 'user_state init_arg = {
   user_handler : 'user_state user_handler;
   ffmpeg_path : string;
   ffmpeg_options : string list;
+  youtubedl_path : string;
 }
 
 type call_msg = |
@@ -33,8 +34,15 @@ class ['user_state] t =
       ['user_state init_arg, msg, 'user_state state] Actaa.Gen_server.behaviour
 
     method private init env ~sw
-        { token; intents; user_init; user_handler; ffmpeg_path; ffmpeg_options }
-        =
+        {
+          token;
+          intents;
+          user_init;
+          user_handler;
+          ffmpeg_path;
+          ffmpeg_options;
+          youtubedl_path;
+        } =
       let agent = new Agent.t in
       agent
       |> Actaa.Gen_server.start env ~sw
@@ -45,6 +53,7 @@ class ['user_state] t =
                consumer = (self :> consumer);
                ffmpeg_path;
                ffmpeg_options;
+               youtubedl_path;
              };
       let user_state = user_init () in
       { agent; user_state; user_handler }
@@ -61,10 +70,38 @@ class ['user_state] t =
       `NoReply { state with user_state }
   end
 
-let start env ~sw ~token ~intents ~ffmpeg_path ~ffmpeg_options user_init
-    user_handler =
+let default_ffmpeg_path = "/usr/bin/ffmpeg"
+
+let default_ffmpeg_options =
+  [
+    "-i";
+    "pipe:0";
+    "-ac";
+    "2";
+    "-ar";
+    "48000";
+    "-f";
+    "s16le";
+    "-loglevel";
+    "quiet";
+    "pipe:1";
+  ]
+
+let default_youtubedl_path = "/usr/bin/youtube-dl"
+
+let start env ~sw ~token ~intents ?(ffmpeg_path = default_ffmpeg_path)
+    ?(ffmpeg_options = default_ffmpeg_options)
+    ?(youtubedl_path = default_youtubedl_path) user_init user_handler =
   let t = new t in
   t
   |> Actaa.Gen_server.start env ~sw
-       { token; intents; user_init; user_handler; ffmpeg_path; ffmpeg_options };
+       {
+         token;
+         intents;
+         user_init;
+         user_handler;
+         ffmpeg_path;
+         ffmpeg_options;
+         youtubedl_path;
+       };
   t
