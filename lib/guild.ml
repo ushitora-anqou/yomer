@@ -299,6 +299,7 @@ let update_voice_state state
 
 let get_display_name : Discord.Object.guild_member -> string option = function
   | { nick = Some nick; _ } -> Some nick
+  | { user = Some { global_name = Some global_name; _ }; _ } -> Some global_name
   | { user = Some { username; _ }; _ } -> Some username
   | _ -> None
 
