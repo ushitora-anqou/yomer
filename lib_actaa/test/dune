@@ -1,3 +1,0 @@
-(tests
- (names test_actaa)
- (libraries alcotest actaa eio eio_main eio.core eio.unix hmap))
