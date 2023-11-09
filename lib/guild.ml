@@ -1,6 +1,6 @@
 open Util
 
-type normal_message = [ `Bare of string | `Discord of Discord.Object.message ]
+type normal_message = [ `Bare of string | `Discord of Discord.Entity.message ]
 
 type message =
   [ normal_message | `Wait of float (* seconds *) | `ScheduledLeave ]
@@ -15,14 +15,14 @@ type call_msg = |
 type call_reply = |
 
 type cast_msg =
-  [ `JoinByMessage of Discord.Object.message
-  | `LeaveByMessage of Discord.Object.message
+  [ `JoinByMessage of Discord.Entity.message
+  | `LeaveByMessage of Discord.Entity.message
   | `MessageArrived of message
   | `VoiceReady
   | `VoiceSpeaking of bool
   | `Ping of string (* channel_id *)
   | `VoiceStateUpdateArrived of Discord.Event.dispatch_voice_state_update
-  | `ThreadCreate of Discord.Object.channel ]
+  | `ThreadCreate of Discord.Entity.channel ]
 
 type basic_msg = (call_msg, call_reply, cast_msg) Actaa.Gen_server.basic_msg
 type msg = [ basic_msg | `Timeout of [ `Leave of string | `Wait ] ]
@@ -151,7 +151,7 @@ let query_voice_provider env ~config ~provider ~text =
       then failwith "query_voice_provider: Voicevox: Failed to get speech";
       Httpx.Http.drain_resp_body resp
 
-let format_discord_message (config : Config.t) (msg : Discord.Object.message) =
+let format_discord_message (config : Config.t) (msg : Discord.Entity.message) =
   (* Concat dummy to content if there are attachments *)
   let content =
     match msg.attachments with
@@ -163,7 +163,7 @@ let format_discord_message (config : Config.t) (msg : Discord.Object.message) =
   let content =
     msg.sticker_items |> Option.value ~default:[]
     |> List.fold_left
-         (fun content (sticker : Discord.Object.sticker_item) ->
+         (fun content (sticker : Discord.Entity.sticker_item) ->
            content ^ " " ^ sticker.name)
          content
   in
@@ -187,11 +187,11 @@ let start_speaking env ~sw:_ ~token state msg =
   let provider =
     match msg with
     | `Bare _ -> (StringMap.find config.announcer config.voices).provider
-    | `Discord (msg : Discord.Object.message) -> (
+    | `Discord (msg : Discord.Entity.message) -> (
         let id_to_role =
           Discord.Rest.get_guild_roles env ~token ~guild_id
           |> Result.get_ok
-          |> List.map (fun (r : Discord.Object.role) -> (r.id, r))
+          |> List.map (fun (r : Discord.Entity.role) -> (r.id, r))
           |> List.to_seq |> StringMap.of_seq
         in
         let member =
@@ -297,7 +297,7 @@ let update_voice_state state
     voice_states = state.voice_states |> StringMap.add payload.user_id payload;
   }
 
-let get_display_name : Discord.Object.guild_member -> string option = function
+let get_display_name : Discord.Entity.guild_member -> string option = function
   | { nick = Some nick; _ } -> Some nick
   | { user = Some { global_name = Some global_name; _ }; _ } -> Some global_name
   | { user = Some { username; _ }; _ } -> Some username
@@ -328,7 +328,7 @@ let send_message env channel_id state content =
   let description = Jingoo.Jg_template.from_string ~models description_src in
   let (_ : _ result) =
     Discord.Rest.make_create_message_param
-      ~embeds:[ Discord.Object.make_embed ~description () ]
+      ~embeds:[ Discord.Entity.make_embed ~description () ]
       ()
     |> Discord.Rest.create_message env ~token:state.config.discord_token
          channel_id
@@ -403,7 +403,7 @@ class t =
       | (Speaking | Waiting), _ -> push_msg_queue msg state
 
     method private handle_activity env ~sw state
-        (member : Discord.Object.guild_member) activity =
+        (member : Discord.Entity.guild_member) activity =
       let react tmpl state =
         let state =
           member |> get_display_name
@@ -556,7 +556,7 @@ class t =
               agent |> Discord.Agent.join_channel ~guild_id ~channel_id;
 
               Discord.Rest.get_channel env ~token ~channel_id
-              |> Result.iter (fun (channel : Discord.Object.channel) ->
+              |> Result.iter (fun (channel : Discord.Entity.channel) ->
                      channel.name
                      |> Option.iter (fun name ->
                             send_message env msg.channel_id state (`Summon name)));
@@ -591,7 +591,7 @@ class t =
       | `Ping channel_id ->
           if
             Discord.Rest.make_create_message_param
-              ~embeds:[ Discord.Object.make_embed ~description:"pong" () ]
+              ~embeds:[ Discord.Entity.make_embed ~description:"pong" () ]
               ()
             |> Discord.Rest.create_message env ~token channel_id
             |> Result.is_error

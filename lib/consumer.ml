@@ -76,7 +76,7 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
             Rest.(
               create_message env ~token:config.discord_token msg.channel_id
                 (make_create_message_param
-                   ~embeds:[ Object.make_embed ~description () ]
+                   ~embeds:[ Entity.make_embed ~description () ]
                    ())))
           |> ignore;
           state

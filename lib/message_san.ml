@@ -13,7 +13,7 @@ let replace_mention_with_display_name =
              | Ok { user = Some { username; _ }; _ } -> "@" ^ username
              | _ ->
                  Discord.Rest.get_user env ~token ~user_id
-                 |> Result.map (fun (u : Discord.Object.user) ->
+                 |> Result.map (fun (u : Discord.Entity.user) ->
                         "@" ^ u.username)
                  |> Result.value ~default:whole)
          | _ -> assert false)
@@ -29,7 +29,7 @@ let replace_mention_with_role =
              match
                Discord.Rest.get_guild_roles env ~token ~guild_id
                |> Result.map
-                    (List.find_opt (fun (r : Discord.Object.role) ->
+                    (List.find_opt (fun (r : Discord.Entity.role) ->
                          r.id = role_id))
              with
              | Ok (Some { name; _ }) -> "@" ^ name
