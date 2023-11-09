@@ -12,7 +12,8 @@ WORKDIR /home/opam/yomer
 RUN opam-2.1 update && \
     opam-2.1 pin cohttp "https://github.com/mirage/ocaml-cohttp.git#v6.0.0_beta1" && \
     opam-2.1 pin cohttp-eio "https://github.com/mirage/ocaml-cohttp.git#v6.0.0_beta1" && \
-    opam-2.1 pin sodium "https://github.com/ahrefs/ocaml-sodium.git#734eccbb47e7545a459a504188f1da8dc0bd018e"
+    opam-2.1 pin sodium "https://github.com/ahrefs/ocaml-sodium.git#734eccbb47e7545a459a504188f1da8dc0bd018e" && \
+    opam-2.1 pin discord "https://github.com/ushitora-anqou/discordml.git#master"
 
 COPY --chown=opam yomer.opam .
 RUN opam-2.1 install . --deps-only
