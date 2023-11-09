@@ -8,23 +8,48 @@ type state = { guilds : Guild.t StringMap.t }
 
 let get_guild guild_id state = StringMap.find_opt guild_id state.guilds
 
-let ensure_guild_exists env ~sw ~config ~guild_id ~state ~agent =
+let ensure_guild_exists ?voice_states env ~sw ~config ~guild_id ~state ~agent =
   match StringMap.find_opt guild_id state.guilds with
   | Some guild -> (guild, state)
   | None ->
       let guild = Guild.create () in
-      guild |> Guild.start env ~sw ~guild_id ~agent ~config;
+      let voice_states =
+        match voice_states with
+        | Some xs ->
+            xs
+            |> List.map (fun (x : Discord.Event.dispatch_voice_state_update) ->
+                   (x.user_id, x))
+            |> List.to_seq |> StringMap.of_seq
+        | None -> Discord.Agent.get_all_voice_states agent ~guild_id
+      in
+      guild |> Guild.start env ~sw ~guild_id ~agent ~config ~voice_states;
       (guild, { guilds = state.guilds |> StringMap.add guild_id guild })
 
 let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
     state = function
   | Discord.Event.Dispatch (READY _) -> state
-  | Dispatch (GUILD_CREATE { voice_states = Some vstates; id = guild_id; _ })
-    -> (
-      (* Join the channel if we're already in it *)
+  | Dispatch
+      (GUILD_CREATE { voice_states = Some voice_states; id = guild_id; _ }) -> (
       let self_user_id = (Option.get (Discord.Agent.me agent)).id in
+
+      (* Augment voice states *)
+      let voice_states =
+        voice_states
+        |> Eio.Fiber.List.map
+           @@ fun (vstate : Discord.Event.dispatch_voice_state_update) ->
+           if vstate.user_id = self_user_id then vstate
+           else
+             match
+               Discord.Rest.get_guild_member env ~token:config.discord_token
+                 ~user_id:vstate.user_id ~guild_id
+             with
+             | Ok member -> { vstate with member = Some member }
+             | Error _ -> vstate
+      in
+
+      (* Join the channel if we're already in it *)
       match
-        vstates
+        voice_states
         |> List.find_opt
              (fun (vstate : Discord.Event.dispatch_voice_state_update) ->
                vstate.user_id = self_user_id)
@@ -38,6 +63,7 @@ let handle_event ~(config : Config.t) (env : Eio_unix.Stdenv.base) ~sw agent
           } ->
           let _, state =
             ensure_guild_exists env ~sw ~config ~guild_id ~state ~agent
+              ~voice_states
           in
           agent
           |> Discord.Agent.join_channel ~self_mute ~self_deaf ~guild_id

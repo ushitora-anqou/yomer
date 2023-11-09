@@ -9,6 +9,7 @@ type init_arg = {
   guild_id : string;
   agent : Discord.Agent.t;
   config : Config.t;
+  voice_states : Discord.Event.dispatch_voice_state_update StringMap.t;
 }
 
 type call_msg = |
@@ -43,18 +44,14 @@ type Actaa.Process.Stop_reason.t += Restart
 
 let genid () = Random.bits () |> string_of_int
 
-let get_my_vc_id ~guild_id agent =
+let get_my_vc_id state =
   let ( let* ) = Option.bind in
-  let* user = Discord.Agent.me agent in
-  let* vstate =
-    agent |> Discord.Agent.get_voice_states ~guild_id ~user_id:user.id
-  in
+  let* user = Discord.Agent.me state.agent in
+  let* vstate = StringMap.find_opt user.id state.voice_states in
   vstate.channel_id
 
 let get_num_of_non_bots_in_my_vc env state =
-  let guild_id = state.guild_id in
-  let agent = state.agent in
-  match get_my_vc_id ~guild_id agent with
+  match get_my_vc_id state with
   | None -> failwith "not in any vc"
   | Some vchannel_id ->
       let aux _ (vstate : Discord.Event.dispatch_voice_state_update) num =
@@ -79,7 +76,7 @@ let get_num_of_non_bots_in_my_vc env state =
           in
           if is_bot then num else num + 1
       in
-      StringMap.fold aux (Discord.Agent.get_all_voice_states ~guild_id agent) 0
+      StringMap.fold aux state.voice_states 0
 
 let query_voice_provider env ~config ~provider ~text =
   match provider with
@@ -247,12 +244,8 @@ let get_activity state (payload : Discord.Event.dispatch_voice_state_update) =
   let* me = Discord.Agent.me state.agent in
   let my_user_id = me.id in
   let ch =
-    let* vstate =
-      state.agent
-      |> Discord.Agent.get_voice_states ~guild_id:state.guild_id
-           ~user_id:my_user_id
-    in
-    vstate.channel_id
+    Option.bind (StringMap.find_opt my_user_id state.voice_states) (fun x ->
+        x.channel_id)
   in
 
   let joining_any_channel =
@@ -303,10 +296,9 @@ let get_display_name : Discord.Entity.guild_member -> string option = function
   | { user = Some { username; _ }; _ } -> Some username
   | _ -> None
 
-let get_voice_channel_from_user_id ~guild_id ~user_id agent =
-  Option.bind
-    (agent |> Discord.Agent.get_voice_states ~guild_id ~user_id)
-    (fun x -> x.channel_id)
+let get_voice_channel_from_user_id ~user_id agent =
+  Option.bind (StringMap.find_opt user_id agent.voice_states) (fun x ->
+      x.channel_id)
 
 let send_message env channel_id state content =
   let open Jingoo.Jg_types in
@@ -354,8 +346,8 @@ class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
-    method private init _env ~sw:_ { guild_id; agent; config; _ } =
-      let voice_states = Discord.Agent.get_all_voice_states agent ~guild_id in
+    method private init _env ~sw:_ { guild_id; agent; config; voice_states; _ }
+        =
       {
         config;
         guild_id;
@@ -548,8 +540,7 @@ class t =
           | None ->
               send_message env msg.channel_id state `Summon_not_from_vc;
               `NoReply state
-          | Some channel_id when get_my_vc_id ~guild_id agent = Some channel_id
-            ->
+          | Some channel_id when get_my_vc_id state = Some channel_id ->
               send_message env msg.channel_id state `Summon_but_already_joined;
               `NoReply state
           | Some channel_id ->
@@ -563,15 +554,13 @@ class t =
 
               `NoReply state)
       | `LeaveByMessage msg -> (
-          match get_my_vc_id ~guild_id agent with
+          match get_my_vc_id state with
           | None ->
               send_message env msg.channel_id state `Unsummon_not_joined;
               `NoReply state
           | Some my_vc_id -> (
               match
-                agent
-                |> get_voice_channel_from_user_id ~guild_id
-                     ~user_id:msg.author.id
+                get_voice_channel_from_user_id ~user_id:msg.author.id state
               with
               | Some user_vc_id when user_vc_id = my_vc_id ->
                   let state =
@@ -617,8 +606,8 @@ class t =
 
 let create () = new t
 
-let start env ~sw ~guild_id ~agent ~config (t : t) =
-  Actaa.Gen_server.start env ~sw { guild_id; agent; config } t
+let start env ~sw ~guild_id ~agent ~config ~voice_states (t : t) =
+  Actaa.Gen_server.start env ~sw { guild_id; agent; config; voice_states } t
 
 let join_by_message msg t = Actaa.Gen_server.cast t (`JoinByMessage msg)
 let leave_by_message msg t = Actaa.Gen_server.cast t (`LeaveByMessage msg)
