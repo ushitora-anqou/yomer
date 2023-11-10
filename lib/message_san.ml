@@ -1,18 +1,16 @@
 let replace_mention_with_display_name =
   let mention_user_id_regex = Regex.e {|<@!?([0-9]+)>|} in
-  fun env ~token ~guild_id text ->
+  fun ~rest ~guild_id text ->
     text
     |> Regex.replace mention_user_id_regex (function
          | [| Some whole; Some user_id |] -> (
              let whole = Regex.substr whole in
              let user_id = Regex.substr user_id in
-             match
-               Discord.Rest.get_guild_member env ~token ~guild_id ~user_id
-             with
+             match Discord.Rest.get_guild_member ~guild_id ~user_id rest with
              | Ok { nick = Some nick; _ } -> "@" ^ nick
              | Ok { user = Some { username; _ }; _ } -> "@" ^ username
              | _ ->
-                 Discord.Rest.get_user env ~token ~user_id
+                 Discord.Rest.get_user ~user_id rest
                  |> Result.map (fun (u : Discord.Entity.user) ->
                         "@" ^ u.username)
                  |> Result.value ~default:whole)
@@ -20,14 +18,14 @@ let replace_mention_with_display_name =
 
 let replace_mention_with_role =
   let mention_role_id_regex = Regex.e {|<@&([0-9]+)>|} in
-  fun env ~token ~guild_id text ->
+  fun ~rest ~guild_id text ->
     text
     |> Regex.replace mention_role_id_regex (function
          | [| Some whole; Some role_id |] -> (
              let whole = Regex.substr whole in
              let role_id = Regex.substr role_id in
              match
-               Discord.Rest.get_guild_roles env ~token ~guild_id
+               Discord.Rest.get_guild_roles ~guild_id rest
                |> Result.map
                     (List.find_opt (fun (r : Discord.Entity.role) ->
                          r.id = role_id))
@@ -38,13 +36,13 @@ let replace_mention_with_role =
 
 let replace_channel_id_with_its_name =
   let mention_channel_id_regex = Regex.e {|<#!?([0-9]+)>|} in
-  fun env ~token text ->
+  fun ~rest text ->
     text
     |> Regex.replace mention_channel_id_regex (function
          | [| Some whole; Some channel_id |] -> (
              let whole = Regex.substr whole in
              let channel_id = Regex.substr channel_id in
-             match Discord.Rest.get_channel env ~token ~channel_id with
+             match Discord.Rest.get_channel ~channel_id rest with
              | Ok { name = Some name; _ } -> "#" ^ name
              | _ -> whole)
          | _ -> assert false)
@@ -173,14 +171,13 @@ let omit_if_too_long ~dummy ~max_length text =
     let text = utf8_sub max_length text in
     text ^ "。" ^ dummy
 
-let sanitize env (config : Config.t) ~guild_id ~text =
-  let token = config.discord_token in
+let sanitize (config : Config.t) ~rest ~guild_id ~text =
   let dummy = config.template_voice_message.dummy in
   let message_omitted = config.template_voice_message.message_omitted in
   text
-  |> replace_mention_with_display_name env ~token ~guild_id
-  |> replace_mention_with_role env ~token ~guild_id
-  |> replace_channel_id_with_its_name env ~token
+  |> replace_mention_with_display_name ~rest ~guild_id
+  |> replace_mention_with_role ~rest ~guild_id
+  |> replace_channel_id_with_its_name ~rest
   |> replace_with_alternatives
   |> replace_url_with_dummy ~dummy
   |> replace_code_block_with_dummy ~dummy

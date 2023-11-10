@@ -8,6 +8,7 @@ type message =
 type init_arg = {
   guild_id : string;
   agent : Discord.Agent.t;
+  rest : Discord.Rest.t;
   config : Config.t;
   voice_states : Discord.Event.dispatch_voice_state_update StringMap.t;
 }
@@ -33,6 +34,7 @@ type state = {
   config : Config.t;
   guild_id : string;
   agent : Discord.Agent.t;
+  rest : Discord.Rest.t;
   msg_queue : message Fqueue.t;
   speaking_status : speaking_status;
   voice_states : Discord.Event.dispatch_voice_state_update StringMap.t;
@@ -50,7 +52,7 @@ let get_my_vc_id state =
   let* vstate = StringMap.find_opt user.id state.voice_states in
   vstate.channel_id
 
-let get_num_of_non_bots_in_my_vc env state =
+let get_num_of_non_bots_in_my_vc state =
   match get_my_vc_id state with
   | None -> failwith "not in any vc"
   | Some vchannel_id ->
@@ -68,8 +70,7 @@ let get_num_of_non_bots_in_my_vc env state =
             | Some bot -> bot
             | None ->
                 let user =
-                  Discord.Rest.get_user env ~token:state.config.discord_token
-                    ~user_id:vstate.user_id
+                  Discord.Rest.get_user ~user_id:vstate.user_id state.rest
                   |> Result.get_ok
                 in
                 Option.value ~default:false user.bot
@@ -167,7 +168,7 @@ let format_discord_message (config : Config.t) (msg : Discord.Entity.message) =
 
   content
 
-let start_speaking env ~sw:_ ~token state msg =
+let start_speaking env ~sw:_ state msg =
   let guild_id = state.guild_id in
   let config = state.config in
 
@@ -178,7 +179,9 @@ let start_speaking env ~sw:_ ~token state msg =
         let content = format_discord_message config msg in
         content
   in
-  let content = Message_san.sanitize env config ~guild_id ~text:content in
+  let content =
+    Message_san.sanitize config ~rest:state.rest ~guild_id ~text:content
+  in
   if content = "" then failwith "sanitized message is empty";
 
   let provider =
@@ -186,14 +189,14 @@ let start_speaking env ~sw:_ ~token state msg =
     | `Bare _ -> (StringMap.find config.announcer config.voices).provider
     | `Discord (msg : Discord.Entity.message) -> (
         let id_to_role =
-          Discord.Rest.get_guild_roles env ~token ~guild_id
+          Discord.Rest.get_guild_roles ~guild_id state.rest
           |> Result.get_ok
           |> List.map (fun (r : Discord.Entity.role) -> (r.id, r))
           |> List.to_seq |> StringMap.of_seq
         in
         let member =
-          Discord.Rest.get_guild_member env ~token ~user_id:msg.author.id
-            ~guild_id
+          Discord.Rest.get_guild_member ~user_id:msg.author.id ~guild_id
+            state.rest
           |> Result.get_ok
         in
         let additionally_available_voices =
@@ -300,7 +303,7 @@ let get_voice_channel_from_user_id ~user_id agent =
   Option.bind (StringMap.find_opt user_id agent.voice_states) (fun x ->
       x.channel_id)
 
-let send_message env channel_id state content =
+let send_message _env channel_id state content =
   let open Jingoo.Jg_types in
   let description_src, models =
     match content with
@@ -322,8 +325,7 @@ let send_message env channel_id state content =
     Discord.Rest.make_create_message_param
       ~embeds:[ Discord.Entity.make_embed ~description () ]
       ()
-    |> Discord.Rest.create_message env ~token:state.config.discord_token
-         channel_id
+    |> Discord.Rest.create_message channel_id state.rest
   in
   ()
 
@@ -331,7 +333,7 @@ let reset_speaking_status state =
   { state with msg_queue = Fqueue.empty; speaking_status = NotReady }
 
 let reset_leave_timer env ~sw state self =
-  if get_num_of_non_bots_in_my_vc env state <> 0 then
+  if get_num_of_non_bots_in_my_vc state <> 0 then
     { state with leave_timer_id = None }
   else (
     Logs.info (fun m -> m "No one is in the vc. Scheduling leave");
@@ -346,12 +348,13 @@ class t =
   object (self)
     inherit [init_arg, msg, state] Actaa.Gen_server.behaviour
 
-    method private init _env ~sw:_ { guild_id; agent; config; voice_states; _ }
-        =
+    method private init _env ~sw:_
+        { guild_id; agent; rest; config; voice_states; _ } =
       {
         config;
         guild_id;
         agent;
+        rest;
         msg_queue = Fqueue.empty;
         speaking_status = NotReady;
         voice_states;
@@ -371,10 +374,10 @@ class t =
           { state with speaking_status = NotReady; msg_queue = Fqueue.empty }
       | Some (#normal_message as msg), state -> (
           try
-            if get_num_of_non_bots_in_my_vc env state = 0 then
+            if get_num_of_non_bots_in_my_vc state = 0 then
               { state with speaking_status = Ready; msg_queue = Fqueue.empty }
             else (
-              start_speaking env ~sw ~token:state.config.discord_token state msg;
+              start_speaking env ~sw state msg;
               { state with speaking_status = Speaking })
           with e ->
             Logs.err (fun m ->
@@ -502,8 +505,7 @@ class t =
             } ) ->
           let state =
             match
-              Discord.Rest.get_guild_member env
-                ~token:state.config.discord_token ~guild_id ~user_id
+              Discord.Rest.get_guild_member ~guild_id ~user_id state.rest
             with
             | Error _ -> state
             | Ok member -> (
@@ -528,7 +530,6 @@ class t =
 
     method! private handle_cast env ~sw state msg =
       let { agent; guild_id; speaking_status; config; _ } = state in
-      let token = config.discord_token in
       let ( >>= ) = Option.bind in
       match msg with
       | `JoinByMessage msg -> (
@@ -546,7 +547,7 @@ class t =
           | Some channel_id ->
               agent |> Discord.Agent.join_channel ~guild_id ~channel_id;
 
-              Discord.Rest.get_channel env ~token ~channel_id
+              Discord.Rest.get_channel ~channel_id state.rest
               |> Result.iter (fun (channel : Discord.Entity.channel) ->
                      channel.name
                      |> Option.iter (fun name ->
@@ -582,7 +583,7 @@ class t =
             Discord.Rest.make_create_message_param
               ~embeds:[ Discord.Entity.make_embed ~description:"pong" () ]
               ()
-            |> Discord.Rest.create_message env ~token channel_id
+            |> Discord.Rest.create_message channel_id state.rest
             |> Result.is_error
           then Logs.err (fun m -> m "Failed to send pong");
           `NoReply state
@@ -606,8 +607,10 @@ class t =
 
 let create () = new t
 
-let start env ~sw ~guild_id ~agent ~config ~voice_states (t : t) =
-  Actaa.Gen_server.start env ~sw { guild_id; agent; config; voice_states } t
+let start env ~sw ~guild_id ~agent ~rest ~config ~voice_states (t : t) =
+  Actaa.Gen_server.start env ~sw
+    { guild_id; agent; rest; config; voice_states }
+    t
 
 let join_by_message msg t = Actaa.Gen_server.cast t (`JoinByMessage msg)
 let leave_by_message msg t = Actaa.Gen_server.cast t (`LeaveByMessage msg)
