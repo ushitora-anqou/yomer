@@ -247,8 +247,10 @@ let get_activity state (payload : Discord.Event.dispatch_voice_state_update) =
   let* me = Discord.Agent.me state.agent in
   let my_user_id = me.id in
   let ch =
-    Option.bind (StringMap.find_opt my_user_id state.voice_states) (fun x ->
-        x.channel_id)
+    if payload.user_id = my_user_id then payload.channel_id
+    else
+      let* x = StringMap.find_opt my_user_id state.voice_states in
+      x.channel_id
   in
 
   let joining_any_channel =
